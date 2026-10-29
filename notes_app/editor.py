@@ -73,7 +73,9 @@ class NoteEditor(QTextEdit):
         self._natural_sizes: dict = {}
         self.viewport().setMouseTracking(True)
         self.verticalScrollBar().valueChanged.connect(self._clear_hover)
-        self.document().contentsChanged.connect(self._clear_hover)
+        # Only real edits move images; re-formatting lines (live Markdown) doesn't.
+        self.document().contentsChange.connect(
+            lambda _pos, removed, added: (removed or added) and self._clear_hover())
 
     def resizeEvent(self, event):
         # Keep the text in a comfortable centred column on wide windows.
@@ -217,7 +219,10 @@ class NoteEditor(QTextEdit):
 
     def focusInEvent(self, event):
         super().focusInEvent(event)
-        self._update_raw_line()
+        # On a click, wait until it's handled (mouseReleaseEvent): switching a line to plain
+        # text first could move what was clicked, such as an image's resize handle.
+        if event.reason() != Qt.FocusReason.MouseFocusReason:
+            self._update_raw_line()
 
     def focusOutEvent(self, event):
         super().focusOutEvent(event)
@@ -423,12 +428,15 @@ class NoteEditor(QTextEdit):
             self.viewport().update()
 
     def mousePressEvent(self, event):
-        if (event.button() == Qt.MouseButton.LeftButton and self._hover is not None
-                and self._handle_rect(self._hover[1]).contains(event.position())):
-            position, rect = self._hover
-            self._drag = {"position": position, "rect": rect,
-                          "start_x": event.position().x(), "width": rect.width()}
-            return
+        if event.button() == Qt.MouseButton.LeftButton:
+            # Check what's under the mouse now rather than trusting the last hover.
+            image = self.image_at(event.position().toPoint(), margin=HANDLE / 2)
+            rect = self._image_rect(image) if image is not None else None
+            if rect is not None and self._handle_rect(rect).contains(event.position()):
+                self._drag = {"position": image.selectionStart(), "rect": rect,
+                              "start_x": event.position().x(), "width": rect.width()}
+                self._hover = (image.selectionStart(), rect)
+                return
         if event.button() == Qt.MouseButton.LeftButton:
             if self._toggle_checkbox_at(event.position()):
                 return
@@ -465,6 +473,7 @@ class NoteEditor(QTextEdit):
             self._clear_hover()
             return
         super().mouseReleaseEvent(event)
+        self._update_raw_line()  # the clicked line shows as plain text now the click is done
 
     def leaveEvent(self, event):
         self._clear_hover()
