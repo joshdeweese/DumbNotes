@@ -1,6 +1,6 @@
-"""Sidebar list of notes: one line per note (title and time), grouped under month headings."""
+"""Sidebar list of notes: one line per note (title and date), grouped under month headings."""
 
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 
 from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
@@ -25,11 +25,19 @@ def clock(when: datetime) -> str:
     return f"{when.hour % 12 or 12}:{when.minute:02d} {'AM' if when.hour < 12 else 'PM'}"
 
 
-def short_ts(iso: str) -> str:
-    when = datetime.fromisoformat(iso)
-    if when.date() == date.today():
-        return f"Today {clock(when)}"
-    return f"{when.strftime('%b')} {when.day}, {clock(when)}"
+def short_ts(iso: str, today: date | None = None) -> str:
+    """'Today', 'Yesterday', a weekday name earlier this week (from Monday), else the date."""
+    day = datetime.fromisoformat(iso).date()
+    today = today or date.today()
+    if day == today:
+        return "Today"
+    if day == today - timedelta(days=1):
+        return "Yesterday"
+    if today - timedelta(days=today.weekday()) <= day < today:
+        return day.strftime("%A")
+    if day.year == today.year:
+        return f"{day.strftime('%b')} {day.day}"
+    return f"{day.strftime('%b')} {day.day}, {day.year}"
 
 
 class NoteDelegate(QStyledItemDelegate):
