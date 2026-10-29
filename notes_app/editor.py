@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QTextEdit
 
 from .file_store import IMAGE_LINK
 from .markdown import CODE_LINE, LineKind, MarkdownHighlighter, link_at
-from .style import ACCENT, FIELD, LINE, TEXT
+from .style import C
 
 FONT_SIZE = 12
 BULLET_GLYPHS = "•◦▪"  # by nesting level
@@ -265,7 +265,7 @@ class NoteEditor(QTextEdit):
         margin = self.document().documentMargin()
         for block, rect in self._visible_blocks():
             if block.userState() > 0 and block.userState() & CODE_LINE:
-                painter.fillRect(rect.adjusted(margin - 6, 0, -margin, 0), QColor(FIELD))
+                painter.fillRect(rect.adjusted(margin - 6, 0, -margin, 0), QColor(C.FIELD))
 
     def _paint_markdown(self) -> None:
         """Draw what text styling can't: bullets, checkboxes, quote bars and rules."""
@@ -280,17 +280,17 @@ class NoteEditor(QTextEdit):
             text, start = block.text(), block.position()
             if LineKind.rule(text):
                 y = rect.center().y()
-                painter.setPen(QPen(QColor(LINE), 1.5))
+                painter.setPen(QPen(QColor(C.LINE), 1.5))
                 painter.drawLine(QPointF(rect.left() + margin, y), QPointF(rect.right() - margin, y))
             elif LineKind.quote(text):
                 bar = self._char_rect(start)
                 painter.fillRect(QRectF(bar.left() + 1, rect.top() + 2, 3, rect.height() - 4),
-                                 QColor(LINE))
+                                 QColor(C.LINE))
             elif LineKind.checkbox(text):
                 box = self._checkbox_rect(block)
                 checked = LineKind.checkbox(text).group(4) != " "
-                painter.setPen(QPen(QColor(ACCENT if checked else "#B9B6AC"), 1.3))
-                painter.setBrush(QColor(ACCENT) if checked else Qt.BrushStyle.NoBrush)
+                painter.setPen(QPen(QColor(C.ACCENT if checked else C.CHECKBOX), 1.3))
+                painter.setBrush(QColor(C.ACCENT) if checked else Qt.BrushStyle.NoBrush)
                 painter.drawRoundedRect(box, 3, 3)
                 if checked:
                     painter.setPen(QPen(QColor("white"), 1.6))
@@ -302,7 +302,7 @@ class NoteEditor(QTextEdit):
             elif LineKind.bullet(text):
                 bullet = LineKind.bullet(text)
                 level = len(bullet.group(1).expandtabs(len(INDENT))) // len(INDENT)
-                painter.setPen(QColor(TEXT))
+                painter.setPen(QColor(C.TEXT))
                 painter.drawText(self._char_rect(start + bullet.start(2)),
                                  Qt.AlignmentFlag.AlignCenter,
                                  BULLET_GLYPHS[level % len(BULLET_GLYPHS)])

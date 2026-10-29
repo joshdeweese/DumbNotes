@@ -11,7 +11,7 @@ import re
 from PySide6.QtGui import (QColor, QFont, QFontMetricsF, QSyntaxHighlighter, QTextCharFormat,
                            QTextDocument)
 
-from .style import ACCENT, FIELD, MUTED
+from .style import C
 
 TITLE_SIZE = 22
 HEADING_SIZES = {1: 20, 2: 17, 3: 15}  # h4-h6 are bold at normal size
@@ -122,14 +122,14 @@ class MarkdownHighlighter(QSyntaxHighlighter):
         elif QUOTE.match(text):
             end = QUOTE.match(text).end()
             self._style(styles, 0, end, color=QColor(0, 0, 0, 0))  # editor draws a bar here
-            self._style(styles, end, len(text), italic=True, color=MUTED)
+            self._style(styles, end, len(text), italic=True, color=C.MUTED)
             start = end
         elif LineKind.checkbox(text):
             box = LineKind.checkbox(text)
             self._hide(hidden, box.start(2), box.start(4) - 1)  # the "- "
             self._style(styles, box.start(4) - 1, box.end(4) + 1, color=QColor(0, 0, 0, 0))
             if box.group(4) != " ":
-                self._style(styles, box.end(), len(text), strike=True, color=MUTED)
+                self._style(styles, box.end(), len(text), strike=True, color=C.MUTED)
             start = box.end()
         elif LineKind.bullet(text):
             bullet = LineKind.bullet(text)
@@ -144,7 +144,7 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             ticks = len(match.group(1))
             self._hide(hidden, match.start(), match.start() + ticks)
             self._hide(hidden, match.end() - ticks, match.end())
-            self._style(styles, match.start(), match.end(), family=MONO, background=FIELD)
+            self._style(styles, match.start(), match.end(), family=MONO, background=C.FIELD)
             taken[match.start():match.end()] = [True] * (match.end() - match.start())
 
         def free(m: re.Match) -> bool:
@@ -154,11 +154,11 @@ class MarkdownHighlighter(QSyntaxHighlighter):
             if free(match):
                 self._hide(hidden, match.start(), match.start() + 1)
                 self._hide(hidden, match.end(1), match.end())
-                self._style(styles, match.start(1), match.end(1), color=ACCENT, underline=True)
+                self._style(styles, match.start(1), match.end(1), color=C.ACCENT, underline=True)
                 taken[match.start():match.end()] = [True] * (match.end() - match.start())
         for match in URL.finditer(text, start):
             if free(match):
-                self._style(styles, match.start(), match.end(), color=ACCENT, underline=True)
+                self._style(styles, match.start(), match.end(), color=C.ACCENT, underline=True)
         for match in BOLD.finditer(text, start):
             if free(match):
                 self._hide(hidden, match.start(), match.start() + 2)

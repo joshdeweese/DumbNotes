@@ -17,6 +17,7 @@ text file in a folder of its own, where you can also keep any other files that g
 - Tags: one word each, written `#tag` (spaces become `-`). They sit at the bottom right of a note;
   **+ Add Tag** picks an existing tag or creates a new one, and clicking a tag removes it.
   **Manage tags…** renames, merges or deletes tags across all notes.
+- **View → Dark Mode** (Cmd/Ctrl+Shift+D) switches between the light and dark look; the app remembers it.
 - Notes autosave as you type. Created and modified times are shown under the editor.
 - The folder button under the editor opens the note's folder in Finder / File Explorer. Its number is
   how many other files are in there (not counting the note itself or its pasted images).

@@ -4,14 +4,14 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QStandardPaths, Qt
+from PySide6.QtCore import QStandardPaths
 from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from notes_app.file_store import NoteStore
-from notes_app.main_window import FOLDER_SETTING, MainWindow, settings
+from notes_app.main_window import FOLDER_SETTING, THEME_SETTING, MainWindow, settings
 from notes_app.migrate import migrate_database
-from notes_app.style import STYLESHEET
+from notes_app.style import apply_theme
 
 
 def notes_dir() -> Path:
@@ -83,10 +83,10 @@ def main() -> int:
     app = QApplication(sys.argv)
     app.setApplicationName("DumbNotes")
     app.setWindowIcon(QIcon(str(ICON)))
-    # Same light look on Windows and macOS, even when the system is in dark mode.
+    # Same look on Windows and macOS; light or dark is chosen in View > Dark Mode, not by
+    # the system setting.
     app.setStyle("Fusion")
-    app.styleHints().setColorScheme(Qt.ColorScheme.Light)
-    app.setStyleSheet(STYLESHEET)
+    apply_theme(app, "dark" if settings().value(THEME_SETTING) == "dark" else "light")
     store = NoteStore(notes_dir())
     old = old_data_dir()
     if (old / "notes.db").is_file():

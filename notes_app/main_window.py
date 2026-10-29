@@ -6,20 +6,20 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QFileSystemWatcher, QSettings, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QPainter, QShortcut
-from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QFrame, QHBoxLayout, QLabel,
-                               QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
-                               QPushButton, QSplitter, QVBoxLayout, QWidget)
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPainter, QShortcut
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame,
+                               QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
+                               QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget)
 
 from .cheat_sheet import CheatSheet
 from .editor import NoteEditor
 from .file_store import NoteStore, parse_search, title_from_text
 from .notes_list import HEADER_ROLE, ID_ROLE, NOTE_ROLE, NoteDelegate, clock, month_label
 from .tag_dialog import ManageTagsDialog
+from .style import apply_theme, is_dark, themed_icon
 from .tag_bar import SearchEdit, TagBar
 
-FOLDER_ICON = Path(__file__).with_name("folder.svg")
-MARKDOWN_ICON = Path(__file__).with_name("markdown.svg")
+THEME_SETTING = "theme"
 FILE_MANAGER = {"darwin": "Finder", "win32": "File Explorer"}.get(sys.platform, "file manager")
 AUTOSAVE_MS = 800
 FOLDER_SETTING = "notes_folder"
@@ -77,6 +77,13 @@ class MainWindow(QMainWindow):
         new_action.triggered.connect(self.new_note)
         self.addAction(new_action)
 
+        view_menu = self.menuBar().addMenu("View")
+        self.dark_action = QAction("Dark Mode", self, checkable=True, checked=is_dark(),
+                                   shortcut="Ctrl+Shift+D")
+        self.dark_action.toggled.connect(self.set_dark_mode)
+        view_menu.addAction(self.dark_action)
+        self._apply_icons()
+
         self.refresh_known_tags()
         self.refresh_list()
         self._set_editing_enabled(False)
@@ -113,7 +120,6 @@ class MainWindow(QMainWindow):
         self.cheat_sheet.insert.connect(self.insert_snippet)
         self.cheat_sheet.hide()
         self.markdown_btn = QPushButton(objectName="markdownBtn", checkable=True,
-                                        icon=QIcon(str(MARKDOWN_ICON)),
                                         toolTip="Markdown cheat sheet")
         self.markdown_btn.setIconSize(QSize(26, 16))
         self.markdown_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -160,7 +166,7 @@ class MainWindow(QMainWindow):
         top_row.setContentsMargins(20, 6, 20, 0)
 
         # Opens the note's own folder, where you can keep other files that go with it.
-        self.attach_btn = QPushButton(objectName="attachBtn", icon=QIcon(str(FOLDER_ICON)))
+        self.attach_btn = QPushButton(objectName="attachBtn")
         self.attach_btn.setIconSize(QSize(16, 16))
         self.attach_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self.attach_btn.clicked.connect(self.open_note_folder)
@@ -443,6 +449,23 @@ class MainWindow(QMainWindow):
             self.saved_state = self._editor_state()
         self.refresh_known_tags()
         self.refresh_list()
+
+    # --- theme ------------------------------------------------------------
+
+    def set_dark_mode(self, dark: bool) -> None:
+        """View > Dark Mode: switch themes and remember the choice."""
+        theme = "dark" if dark else "light"
+        settings().setValue(THEME_SETTING, theme)
+        apply_theme(QApplication.instance(), theme)
+        self._apply_icons()
+        self.cheat_sheet.refresh_theme()
+        self.editor.highlighter.rehighlight()  # link, code and quote colours
+        self.editor.viewport().update()
+        self.notes_list.viewport().update()
+
+    def _apply_icons(self) -> None:
+        self.markdown_btn.setIcon(themed_icon("markdown.svg", (26, 16)))
+        self.attach_btn.setIcon(themed_icon("folder.svg", (16, 16)))
 
     def closeEvent(self, event) -> None:
         self.save_current()

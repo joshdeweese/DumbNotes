@@ -6,7 +6,7 @@ from PySide6.QtCore import QRectF, QSize, Qt
 from PySide6.QtGui import QColor, QFont, QFontMetrics, QPainter
 from PySide6.QtWidgets import QStyle, QStyledItemDelegate
 
-from .style import HOVER, MUTED, SELECTED, TEXT
+from .style import C
 
 ID_ROLE = Qt.ItemDataRole.UserRole
 NOTE_ROLE = Qt.ItemDataRole.UserRole + 1
@@ -61,7 +61,7 @@ class NoteDelegate(QStyledItemDelegate):
         font.setPointSizeF(option.font.pointSizeF() * 0.85)
         font.setWeight(QFont.Weight.DemiBold)
         painter.setFont(font)
-        painter.setPen(QColor(MUTED))
+        painter.setPen(QColor(C.MUTED))
         rect = QRectF(option.rect).adjusted(18, 8, -18, -2)
         painter.drawText(rect, Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignBottom, text)
 
@@ -69,9 +69,9 @@ class NoteDelegate(QStyledItemDelegate):
     def _paint_note(painter, option, note):
         rect = QRectF(option.rect).adjusted(6, 1, -6, -1)
         if option.state & QStyle.StateFlag.State_Selected:
-            background = SELECTED
+            background = C.SELECTED
         elif option.state & QStyle.StateFlag.State_MouseOver:
-            background = HOVER
+            background = C.HOVER
         else:
             background = None
         if background:
@@ -89,13 +89,13 @@ class NoteDelegate(QStyledItemDelegate):
         stamp = short_ts(note["modified_at"])
         stamp_width = small_metrics.horizontalAdvance(stamp)
         painter.setFont(small)
-        painter.setPen(QColor(MUTED))
+        painter.setPen(QColor(C.MUTED))
         painter.drawText(inner, Qt.AlignmentFlag.AlignRight | center, stamp)
 
         room = inner.width() - stamp_width - GAP
         title = note["title"] or "Untitled"
         title = title_metrics.elidedText(title, Qt.TextElideMode.ElideRight, int(room))
         painter.setFont(option.font)
-        painter.setPen(QColor(TEXT if note["title"] else MUTED))
+        painter.setPen(QColor(C.TEXT if note["title"] else C.MUTED))
         painter.drawText(QRectF(inner.left(), inner.top(), room, inner.height()),
                          Qt.AlignmentFlag.AlignLeft | center, title)
