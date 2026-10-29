@@ -4,7 +4,7 @@ from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (QDialog, QHBoxLayout, QInputDialog, QLabel, QListWidget,
                                QListWidgetItem, QMessageBox, QPushButton, QVBoxLayout)
 
-from .file_store import NoteStore
+from .file_store import NoteStore, clean_tag
 
 
 def plural(n: int) -> str:
@@ -48,7 +48,7 @@ class ManageTagsDialog(QDialog):
     def reload(self, select: str | None = None) -> None:
         self.list.clear()
         for name, count in self.store.tag_counts():
-            item = QListWidgetItem(f"{name}  ({plural(count)})")
+            item = QListWidgetItem(f"#{name}  ({plural(count)})")
             item.setData(Qt.ItemDataRole.UserRole, (name, count))
             self.list.addItem(item)
             if select is not None and name.lower() == select.lower():
@@ -71,18 +71,14 @@ class ManageTagsDialog(QDialog):
         if selected is None:
             return
         old, _count = selected
-        new, ok = QInputDialog.getText(self, "Rename tag", f'New name for "{old}":', text=old)
-        new = new.strip()
+        new, ok = QInputDialog.getText(self, "Rename tag", f"New name for #{old}:", text=old)
+        new = clean_tag(new)  # one word; spaces become '-'
         if not ok or not new or new == old:
-            return
-        if "," in new:
-            QMessageBox.warning(self, "Rename tag", "Tag names can't contain commas.")
             return
         existing = self.store.find_tag(new)
         if existing is not None and existing.lower() != old.lower():
             answer = QMessageBox.question(
-                self, "Merge tags",
-                f'A tag named "{existing}" already exists. Merge "{old}" into it?')
+                self, "Merge tags", f"#{existing} already exists. Merge #{old} into it?")
             if answer != QMessageBox.StandardButton.Yes:
                 return
             new = existing
@@ -97,7 +93,7 @@ class ManageTagsDialog(QDialog):
         name, count = selected
         answer = QMessageBox.question(
             self, "Delete tag",
-            f'Remove the tag "{name}" from {plural(count)}? The notes themselves are kept.')
+            f"Remove #{name} from {plural(count)}? The notes themselves are kept.")
         if answer != QMessageBox.StandardButton.Yes:
             return
         self.store.delete_tag(name)

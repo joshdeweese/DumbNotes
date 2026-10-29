@@ -6,19 +6,17 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QFileSystemWatcher, QSettings, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QShortcut
-from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QLabel,
-                               QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
-                               QFileDialog, QMessageBox, QPushButton, QSplitter, QVBoxLayout,
-                               QWidget)
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QPainter, QShortcut
+from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QFrame, QHBoxLayout, QLabel,
+                               QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
+                               QPushButton, QSplitter, QVBoxLayout, QWidget)
 
 from .editor import NoteEditor
-from .file_store import NoteStore, title_from_text
+from .file_store import NoteStore, parse_search, title_from_text
 from .notes_list import HEADER_ROLE, ID_ROLE, NOTE_ROLE, NoteDelegate, clock, month_label
 from .tag_dialog import ManageTagsDialog
-from .tag_edit import TagEdit
+from .tag_bar import SearchEdit, TagBar
 
-ALL_TAGS = "All tags"
 FOLDER_ICON = Path(__file__).with_name("folder.svg")
 FILE_MANAGER = {"darwin": "Finder", "win32": "File Explorer"}.get(sys.platform, "file manager")
 AUTOSAVE_MS = 800
@@ -34,14 +32,21 @@ def fmt_ts(iso: str) -> str:
     return f"{when.strftime('%b')} {when.day}, {when.year} {clock(when)}"
 
 
-def parse_tags(text: str) -> tuple[str, ...]:
-    seen, tags = set(), []
-    for raw in text.split(","):
-        tag = raw.strip()
-        if tag and tag.lower() not in seen:
-            seen.add(tag.lower())
-            tags.append(tag)
-    return tuple(tags)
+class ElidedLabel(QLabel):
+    """One-line label that shortens itself with '…' when the tags need the room."""
+
+    def minimumSizeHint(self) -> QSize:
+        return QSize(40, super().minimumSizeHint().height())
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self.setToolTip(text)
+
+    def paintEvent(self, event) -> None:
+        painter = QPainter(self)
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        text = self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, self.width())
+        painter.drawText(self.rect(), int(self.alignment()), text)
 
 
 class MainWindow(QMainWindow):
@@ -70,7 +75,7 @@ class MainWindow(QMainWindow):
         new_action.triggered.connect(self.new_note)
         self.addAction(new_action)
 
-        self.refresh_tag_filter()
+        self.refresh_known_tags()
         self.refresh_list()
         self._set_editing_enabled(False)
         self._select_first_note()
@@ -81,11 +86,10 @@ class MainWindow(QMainWindow):
         new_btn = QPushButton("+  New note", objectName="primary")
         new_btn.clicked.connect(self.new_note)
 
-        self.search = QLineEdit(placeholderText="Search notes", clearButtonEnabled=True)
+        self.search = SearchEdit(placeholderText="Search text or #tag", clearButtonEnabled=True,
+                                 toolTip="Type words to find in notes, #tag to filter by tag, "
+                                         "or both (notes must match all of them)")
         self.search.textChanged.connect(lambda: self.refresh_list())
-
-        self.tag_filter = QComboBox()
-        self.tag_filter.currentIndexChanged.connect(lambda: self.refresh_list())
 
         self.notes_list = QListWidget(objectName="notesList")
         self.notes_list.setItemDelegate(NoteDelegate(self.notes_list))
@@ -117,7 +121,6 @@ class MainWindow(QMainWindow):
         layout.addWidget(new_btn)
         layout.addSpacing(4)
         layout.addWidget(self.search)
-        layout.addWidget(self.tag_filter)
         layout.addSpacing(2)
         layout.addWidget(self.notes_list, 1)
         layout.addLayout(bottom_row)
@@ -129,12 +132,8 @@ class MainWindow(QMainWindow):
         self.editor.setFrameShape(QFrame.Shape.NoFrame)
         self.editor.textChanged.connect(self.schedule_save)
 
-        self.tags_edit = TagEdit(objectName="tagsEdit", placeholderText="Add tags",
-                                 toolTip="Tags, separated by commas (↓ shows existing tags)")
-        self.tags_edit.setAlignment(Qt.AlignmentFlag.AlignRight)
-        self.tags_edit.setMinimumWidth(180)
-        self.tags_edit.setMaximumWidth(340)
-        self.tags_edit.textChanged.connect(self.schedule_save)
+        self.tag_bar = TagBar()
+        self.tag_bar.changed.connect(self.schedule_save)
 
         self.delete_btn = QPushButton("Delete", objectName="danger")
         self.delete_btn.clicked.connect(self.delete_note)
@@ -142,7 +141,7 @@ class MainWindow(QMainWindow):
         top_row.addStretch(1)
         top_row.addWidget(self.delete_btn)
 
-        self.info = QLabel(objectName="info")
+        self.info = ElidedLabel(objectName="info")
 
         top_row.setContentsMargins(20, 6, 20, 0)
 
@@ -158,9 +157,8 @@ class MainWindow(QMainWindow):
         footer.setContentsMargins(20, 6, 24, 10)
         footer.setSpacing(10)
         footer.addWidget(self.attach_btn)
-        footer.addWidget(self.info)
-        footer.addStretch(1)
-        footer.addWidget(self.tags_edit, 1)
+        footer.addWidget(self.info, 1)
+        footer.addWidget(self.tag_bar)
 
         pane = QWidget(objectName="editorPane")
         pane.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
@@ -173,30 +171,21 @@ class MainWindow(QMainWindow):
         return pane
 
     def _set_editing_enabled(self, enabled: bool) -> None:
-        for widget in (self.editor, self.tags_edit, self.delete_btn):
+        for widget in (self.editor, self.tag_bar, self.delete_btn):
             widget.setEnabled(enabled)
         self.attach_btn.setVisible(enabled)
 
     # --- list -------------------------------------------------------------
 
-    def refresh_tag_filter(self) -> None:
-        current = self.tag_filter.currentText()
-        self.tag_filter.blockSignals(True)
-        self.tag_filter.clear()
-        self.tag_filter.addItem(ALL_TAGS)
+    def refresh_known_tags(self) -> None:
+        """Give the Add Tag picker and the search box the current list of tags."""
         tags = self.store.all_tags()
-        self.tag_filter.addItems(tags)
-        self.tags_edit.set_tags(tags)
-        index = self.tag_filter.findText(current)
-        self.tag_filter.setCurrentIndex(max(index, 0))
-        self.tag_filter.blockSignals(False)
-        if index < 0 and current not in ("", ALL_TAGS):
-            self.refresh_list()
+        self.tag_bar.set_known(tags)
+        self.search.set_tags(tags)
 
     def refresh_list(self) -> None:
-        tag = self.tag_filter.currentText()
-        notes = self.store.list_notes(self.search.text().strip(),
-                                      None if tag in ("", ALL_TAGS) else tag)
+        text, tags = parse_search(self.search.text())
+        notes = self.store.list_notes(text, tags)
         self.notes_list.blockSignals(True)
         self.notes_list.clear()
         month = None
@@ -264,11 +253,9 @@ class MainWindow(QMainWindow):
         note = self.store.get_note(note_id)
         self.current_id = note_id
         self.editor.blockSignals(True)
-        self.tags_edit.blockSignals(True)
         self.editor.set_text(note["body"], note["dir"])
-        self.tags_edit.setText(", ".join(self.store.get_tags(note_id)))
+        self.tag_bar.set_tags(self.store.get_tags(note_id))
         self.editor.blockSignals(False)
-        self.tags_edit.blockSignals(False)
         self.saved_state = self._editor_state()
         self._set_editing_enabled(True)
         self._show_info(note["created_at"], note["modified_at"])
@@ -304,10 +291,10 @@ class MainWindow(QMainWindow):
         super().changeEvent(event)
 
     def _editor_state(self) -> tuple[str, tuple[str, ...]]:
-        return self.editor.text(), parse_tags(self.tags_edit.text())
+        return self.editor.text(), tuple(self.tag_bar.tags())
 
     def _show_info(self, created: str, modified: str) -> None:
-        self.info.setText(f"Created {fmt_ts(created)}     ·     Modified {fmt_ts(modified)}")
+        self.info.setText(f"Created {fmt_ts(created)}   ·   Modified {fmt_ts(modified)}")
 
     def schedule_save(self) -> None:
         if self.current_id is not None:
@@ -329,7 +316,7 @@ class MainWindow(QMainWindow):
         self._show_info(note["created_at"], modified)
         item = self._item_for(self.current_id)
         if tags_changed:
-            self.refresh_tag_filter()
+            self.refresh_known_tags()
         if item is not None and item is self._first_note_item():
             self._set_item_note(item, title, ", ".join(self.store.get_tags(self.current_id)),
                                 modified, note["created_at"])
@@ -340,13 +327,13 @@ class MainWindow(QMainWindow):
     def new_note(self) -> None:
         self.save_current()
         note_id = self.store.create_note()
-        tag = self.tag_filter.currentText()
+        _, tags = parse_search(self.search.text())
         self.search.blockSignals(True)
         self.search.clear()
         self.search.blockSignals(False)
         self.load_note(note_id)
-        if tag != ALL_TAGS:
-            self.tags_edit.setText(tag)  # new note joins the tag being viewed
+        if tags:
+            self.tag_bar.set_tags(tags)  # a new note joins the #tags being searched for
             self.save_current()
         self.refresh_list()
         self.editor.setFocus()
@@ -366,15 +353,13 @@ class MainWindow(QMainWindow):
         self.current_id = None
         self.saved_state = None
         self.editor.blockSignals(True)
-        self.tags_edit.blockSignals(True)
         self.editor.clear()
-        self.tags_edit.clear()
         self.editor.blockSignals(False)
-        self.tags_edit.blockSignals(False)
+        self.tag_bar.set_tags([])
         self.info.clear()
         self.update_attachments()
         self._set_editing_enabled(False)
-        self.refresh_tag_filter()
+        self.refresh_known_tags()
         self.refresh_list()
         self._select_first_note()
 
@@ -424,7 +409,7 @@ class MainWindow(QMainWindow):
             self.editor.note_dir = self.store.get_note(self.current_id)["dir"]
         self.update_attachments()
         self._update_folder_tooltip()
-        self.refresh_tag_filter()
+        self.refresh_known_tags()
         self.refresh_list()
 
     def manage_tags(self) -> None:
@@ -435,11 +420,9 @@ class MainWindow(QMainWindow):
             return
         if self.current_id is not None:
             # Show the current note's renamed/removed tags without counting it as an edit.
-            self.tags_edit.blockSignals(True)
-            self.tags_edit.setText(", ".join(self.store.get_tags(self.current_id)))
-            self.tags_edit.blockSignals(False)
+            self.tag_bar.set_tags(self.store.get_tags(self.current_id))
             self.saved_state = self._editor_state()
-        self.refresh_tag_filter()
+        self.refresh_known_tags()
         self.refresh_list()
 
     def closeEvent(self, event) -> None:

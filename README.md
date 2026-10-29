@@ -3,11 +3,15 @@
 A simple desktop notes app in Python (PySide6) for Windows (and macOS). Each note is a plain
 text file in a folder of its own, where you can also keep any other files that go with it.
 
-- Left pane: every note with its tags and modified time, newest first, grouped by month. Search box and tag filter.
+- Left pane: every note with the day it was last modified, newest first, grouped by month.
+- Search: type words to find in note text, `#tag` to show notes with that tag, or both,
+  e.g. `oak #kitchen #2026` (a note has to match everything). Typing `#` suggests existing tags.
 - Right pane: plain text editor. The first line is the title and is shown larger.
 - Bullets: start a line with `- `; Enter continues the list, Tab / Shift+Tab nest it, Enter on an empty bullet ends it.
 - Paste images straight from the clipboard (e.g. Snipping Tool), or drop image files in. Drag an image's corner to resize it.
-- Tags: comma separated in the field above the editor.
+- Tags: one word each, written `#tag` (spaces become `-`). They sit at the bottom right of a note;
+  **+ Add Tag** picks an existing tag or creates a new one, and clicking a tag removes it.
+  **Manage tags…** renames, merges or deletes tags across all notes.
 - Notes autosave as you type. Created and modified times are shown under the editor.
 - The folder button under the editor opens the note's folder in Finder / File Explorer. Its number is
   how many other files are in there (not counting the note itself or its pasted images).

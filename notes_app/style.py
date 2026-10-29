@@ -56,9 +56,12 @@ QToolButton:hover { background: $HOVER; }
 QToolButton:checked { background: $SELECTED; }
 QToolButton:disabled { color: #C9C7BF; }
 
-#tagsEdit, #tagsEdit:focus { background: transparent; border: none; padding: 4px 2px; }
-#tagsEdit { color: $MUTED; }
-#tagsEdit:focus { color: $TEXT; }
+QPushButton#tagChip { background: $FIELD; color: $TEXT; border-radius: 10px; padding: 3px 9px; }
+QPushButton#tagChip:hover { background: #F8E6E0; color: #A8402A; }
+QPushButton#addTag { background: transparent; color: $MUTED; padding: 3px 8px; }
+QPushButton#addTag:hover { background: $HOVER; color: $TEXT; }
+#tagPicker { background: $EDITOR; border: 1px solid $LINE; border-radius: 8px; }
+#tagPickerList { background: transparent; border: none; padding: 0; }
 #editor { background: $EDITOR; border: none; selection-background-color: #F2D7C9; selection-color: $TEXT; }
 #info, #hint { color: $MUTED; }
 QPushButton#attachBtn { background: transparent; color: $MUTED; padding: 3px 8px 3px 6px; }

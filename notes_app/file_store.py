@@ -67,10 +67,27 @@ def _parse(raw: str) -> tuple[dict[str, str], str]:
     return {}, raw
 
 
+def clean_tag(name: str) -> str:
+    """Tags are single words, shown as #word: drop a leading '#', join words with '-'."""
+    return "-".join(name.replace(",", " ").strip().lstrip("#").split())
+
+
+def parse_search(query: str) -> tuple[str, list[str]]:
+    """Split a search into free text and #tags: 'oak #home #2026' -> ('oak', ['home', '2026'])."""
+    words, tags = [], []
+    for word in query.split():
+        if word.startswith("#"):
+            if clean_tag(word):
+                tags.append(clean_tag(word))
+        else:
+            words.append(word)
+    return " ".join(words), tags
+
+
 def _split_tags(value: str) -> list[str]:
     seen, tags = set(), []
     for raw in value.split(","):
-        tag = raw.strip()
+        tag = clean_tag(raw)
         if tag and tag.lower() not in seen:
             seen.add(tag.lower())
             tags.append(tag)
@@ -267,17 +284,15 @@ class NoteStore:
                          and Path(root, f) != note["path"])
         return count
 
-    def list_notes(self, search: str = "", tag: str | None = None) -> list[dict]:
-        """Notes matching the search text (title, text or tag) and the tag filter, newest first."""
-        search = search.lower()
-        tag = tag.lower() if tag else None
+    def list_notes(self, text: str = "", tags: list[str] = ()) -> list[dict]:
+        """Notes containing the text and having every one of the tags, newest first."""
+        text = text.lower()
+        wanted = {t.lower() for t in tags}
         found = []
         for note in self._notes.values():
-            tags = [t.lower() for t in note["tags"]]
-            if tag is not None and tag not in tags:
+            if not wanted <= {t.lower() for t in note["tags"]}:
                 continue
-            if search and search not in IMAGE_LINK.sub("", note["body"]).lower() \
-                    and not any(search in t for t in tags):
+            if text and text not in IMAGE_LINK.sub("", note["body"]).lower():
                 continue
             found.append({**note, "tags": ", ".join(self.get_tags(note["id"]))})
         found.sort(key=lambda n: (n["modified_at"], n["id"]), reverse=True)
@@ -313,6 +328,7 @@ class NoteStore:
 
         Only the tags line of each file changes, so the notes keep their modified times.
         """
+        new = clean_tag(new)
         existing = self.find_tag(new)
         if existing is not None and existing.lower() != old.lower():
             new = existing
