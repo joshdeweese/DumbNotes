@@ -1,11 +1,12 @@
 """Main window: note list on the left, editor on the right."""
 
 import os
+import sys
 from datetime import datetime
 from pathlib import Path
 
-from PySide6.QtCore import QSettings, Qt, QTimer
-from PySide6.QtGui import QAction, QKeySequence, QShortcut
+from PySide6.QtCore import QEvent, QFileSystemWatcher, QSettings, QSize, Qt, QTimer, QUrl
+from PySide6.QtGui import QAction, QDesktopServices, QIcon, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout, QLabel,
                                QLineEdit, QListWidget, QListWidgetItem, QMainWindow,
                                QFileDialog, QMessageBox, QPushButton, QSplitter, QVBoxLayout,
@@ -18,6 +19,8 @@ from .tag_dialog import ManageTagsDialog
 from .tag_edit import TagEdit
 
 ALL_TAGS = "All tags"
+FOLDER_ICON = Path(__file__).with_name("folder.svg")
+FILE_MANAGER = {"darwin": "Finder", "win32": "File Explorer"}.get(sys.platform, "file manager")
 AUTOSAVE_MS = 800
 FOLDER_SETTING = "notes_folder"
 
@@ -120,7 +123,7 @@ class MainWindow(QMainWindow):
         return pane
 
     def _build_editor_pane(self) -> QWidget:
-        self.editor = NoteEditor(self.store.folder)
+        self.editor = NoteEditor()
         self.editor.setObjectName("editor")
         self.editor.setFrameShape(QFrame.Shape.NoFrame)
         self.editor.textChanged.connect(self.schedule_save)
@@ -143,9 +146,20 @@ class MainWindow(QMainWindow):
         header.addLayout(top_row)
         header.addWidget(self.tags_edit)
 
+        # Opens the note's own folder, where you can keep other files that go with it.
+        self.attach_btn = QPushButton(objectName="attachBtn", icon=QIcon(str(FOLDER_ICON)))
+        self.attach_btn.setIconSize(QSize(16, 16))
+        self.attach_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.attach_btn.clicked.connect(self.open_note_folder)
+        self.folder_watcher = QFileSystemWatcher(self)
+        self.folder_watcher.directoryChanged.connect(lambda _: self.update_attachments())
+
         footer = QHBoxLayout()
-        footer.setContentsMargins(24, 6, 24, 10)
+        footer.setContentsMargins(20, 6, 24, 10)
+        footer.setSpacing(10)
+        footer.addWidget(self.attach_btn)
         footer.addWidget(self.info)
+        footer.addStretch(1)
 
         pane = QWidget(objectName="editorPane")
         pane.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
@@ -160,6 +174,7 @@ class MainWindow(QMainWindow):
     def _set_editing_enabled(self, enabled: bool) -> None:
         for widget in (self.editor, self.tags_edit, self.delete_btn):
             widget.setEnabled(enabled)
+        self.attach_btn.setVisible(enabled)
 
     # --- list -------------------------------------------------------------
 
@@ -249,13 +264,43 @@ class MainWindow(QMainWindow):
         self.current_id = note_id
         self.editor.blockSignals(True)
         self.tags_edit.blockSignals(True)
-        self.editor.set_text(note["body"])
+        self.editor.set_text(note["body"], note["dir"])
         self.tags_edit.setText(", ".join(self.store.get_tags(note_id)))
         self.editor.blockSignals(False)
         self.tags_edit.blockSignals(False)
         self.saved_state = self._editor_state()
         self._set_editing_enabled(True)
         self._show_info(note["created_at"], note["modified_at"])
+        self.update_attachments()
+
+    def update_attachments(self) -> None:
+        """Show how many files sit in the note's folder, and watch it for changes."""
+        if self.folder_watcher.directories():
+            self.folder_watcher.removePaths(self.folder_watcher.directories())
+        if self.current_id is None:
+            return
+        note = self.store.get_note(self.current_id)
+        if note is None or note["dir"] is None:
+            return
+        self.folder_watcher.addPath(str(note["dir"]))
+        count = self.store.attachment_count(self.current_id)
+        self.attach_btn.setText(str(count))
+        files = f"{count} file{'s' * (count != 1)}" if count else "No files"
+        self.attach_btn.setToolTip(f"{files} kept with this note (not counting images)\n"
+                                   f"Click to open its folder in {FILE_MANAGER}")
+
+    def open_note_folder(self) -> None:
+        if self.current_id is None:
+            return
+        self.save_current()  # make sure a brand new note's folder exists
+        note_dir = self.store.get_note(self.current_id)["dir"]
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(note_dir)))
+
+    def changeEvent(self, event) -> None:
+        # Coming back from Finder: pick up files added or removed there.
+        if event.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self.update_attachments()
+        super().changeEvent(event)
 
     def _editor_state(self) -> tuple[str, tuple[str, ...]]:
         return self.editor.text(), parse_tags(self.tags_edit.text())
@@ -309,7 +354,10 @@ class MainWindow(QMainWindow):
         if self.current_id is None:
             return
         title = title_from_text(self.editor.text()) or "Untitled"
-        answer = QMessageBox.question(self, "Delete note", f'Delete "{title}"?')
+        count = self.store.attachment_count(self.current_id)
+        extra = f" and the {count} other file{'s' * (count != 1)} in its folder" if count else ""
+        answer = QMessageBox.question(self, "Delete note", f'Delete "{title}"{extra}?\n\n'
+                                      "It goes to the Trash, so you can get it back.")
         if answer != QMessageBox.StandardButton.Yes:
             return
         self.save_timer.stop()
@@ -323,6 +371,7 @@ class MainWindow(QMainWindow):
         self.editor.blockSignals(False)
         self.tags_edit.blockSignals(False)
         self.info.clear()
+        self.update_attachments()
         self._set_editing_enabled(False)
         self.refresh_tag_filter()
         self.refresh_list()
@@ -340,20 +389,23 @@ class MainWindow(QMainWindow):
                                     "The folder is set by the NOTES_APP_DATA environment variable."
                                     " Remove it to choose a folder here.")
             return
-        chosen =QFileDialog.getExistingDirectory(self, "Choose where to save notes", str(old))
+        chosen = QFileDialog.getExistingDirectory(self, "Choose where to save notes", str(old))
         if not chosen:
             return
         dest = Path(chosen)
         if dest.resolve() == old.resolve():
             return
-        if dest.resolve().is_relative_to(self.store.images_dir.resolve()):
-            QMessageBox.warning(self, "Notes folder", "Choose a folder outside the images folder.")
+        if dest.resolve().is_relative_to(old.resolve()):
+            QMessageBox.warning(self, "Notes folder",
+                                "Choose a folder outside the current notes folder.")
             return
         count = len(self.store.list_notes())
-        waiting = len(list(dest.glob("*.md")))
-        message = f"Move your {count} note{'s' * (count != 1)} and their images to\n{dest}?"
+        waiting = sum(1 for p in dest.iterdir()
+                      if (p.is_dir() and NoteStore._note_file(p)) or p.suffix == ".md")
+        message = (f"Move your {count} note{'s' * (count != 1)} to\n{dest}?\n\n"
+                   "Each note's folder moves with everything in it.")
         if waiting:
-            message += (f"\n\nThat folder already has {waiting} note file"
+            message += (f"\n\nThat folder already has {waiting} note"
                         f"{'s' * (waiting != 1)}; they'll be added to your list.")
         answer = QMessageBox.question(self, "Move notes", message)
         if answer != QMessageBox.StandardButton.Yes:
@@ -367,7 +419,9 @@ class MainWindow(QMainWindow):
                                 f"Your notes are still saved in\n{old}")
             return
         settings().setValue(FOLDER_SETTING, str(dest))
-        self.editor.notes_dir, self.editor.images_dir = dest, self.store.images_dir
+        if self.current_id is not None:
+            self.editor.note_dir = self.store.get_note(self.current_id)["dir"]
+        self.update_attachments()
         self._update_folder_tooltip()
         self.refresh_tag_filter()
         self.refresh_list()

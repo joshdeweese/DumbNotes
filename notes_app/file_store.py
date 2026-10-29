@@ -1,6 +1,12 @@
-"""Notes stored as plain text files: one .md file per note, images in images/.
+"""Notes stored as plain text: each note has its own folder holding its .md file.
 
-Each file starts with a small header (front matter) holding the timestamps and tags:
+    DumbNotes/
+      2026-10-12/
+        2026-10-12.md      the note
+        images/            images pasted into the note
+        quote.pdf          anything else you keep with the note (the app ignores these)
+
+Each .md file starts with a small header (front matter) holding the timestamps and tags:
 
     ---
     created: 2026-10-12T09:41:07
@@ -11,7 +17,8 @@ Each file starts with a small header (front matter) holding the timestamps and t
     ...
     ![|400](images/3f9c2a71....png)
 
-Every note is read into memory at startup, which keeps listing and searching instant.
+Image links are relative to the note's folder. Every note is read into memory at startup,
+which keeps listing and searching instant.
 """
 
 import os
@@ -23,7 +30,7 @@ from pathlib import Path
 from PySide6.QtCore import QFile
 
 IMAGE_LINK = re.compile(r"!\[([^\]]*)\]\(([^)]+)\)")
-# Earlier versions named files "2026-10-12 Kitchen remodel.md"; these get renamed.
+# Earlier versions named files "2026-10-12 Kitchen remodel.md"; these get date names.
 TITLE_NAMED = re.compile(r"^\d{4}-\d{2}-\d{2} .+\.md$")
 SYSTEM_FILES = {".DS_Store", "Thumbs.db", "desktop.ini"}  # made by Finder / Explorer
 
@@ -73,102 +80,144 @@ def _split_tags(value: str) -> list[str]:
 class NoteStore:
     def __init__(self, folder: Path):
         self.folder = folder
-        self.images_dir = folder / "images"
-        self.images_dir.mkdir(parents=True, exist_ok=True)
+        folder.mkdir(parents=True, exist_ok=True)
         self._notes: dict[int, dict] = {}
         self._next_id = 1
-        for path in sorted(folder.glob("*.md")):
-            self._load(path)
-        self._rename_title_named()
+        self._load_folder()
 
     def close(self) -> None:
         pass  # every save is written straight to disk
 
     # --- files ------------------------------------------------------------
 
+    def _load_folder(self) -> None:
+        self._load_paths(sorted(self.folder.iterdir()))
+
+    def _load_paths(self, paths: list[Path]) -> None:
+        """Read note folders, and move loose .md files into folders of their own."""
+        for path in paths:
+            if path.is_dir():
+                note_file = self._note_file(path)
+                if note_file is not None:
+                    self._load(note_file)
+            elif path.suffix == ".md" and not path.name.startswith("."):
+                self._load(path)
+        for note in sorted((n for n in self._notes.values() if n["dir"] is None),
+                           key=lambda n: n["created_at"]):
+            self._into_folder(note)
+        self._remove_if_empty(self.folder / "images")  # the shared folder older versions used
+
+    @staticmethod
+    def _note_file(folder: Path) -> Path | None:
+        """The note in a note folder: '<folder name>.md', or its only .md file."""
+        named = folder / f"{folder.name}.md"
+        if named.is_file():
+            return named
+        found = list(folder.glob("*.md"))
+        return found[0] if len(found) == 1 else None
+
     def _load(self, path: Path) -> None:
         raw = path.read_text(encoding="utf-8").replace("\r\n", "\n")
         fields, body = _parse(raw)
         # A file added by hand may have no header; fall back to its file date.
         fallback = datetime.fromtimestamp(path.stat().st_mtime).isoformat(timespec="seconds")
-        self._add(path, body, fields.get("created") or fallback,
-                  fields.get("modified") or fallback, _split_tags(fields.get("tags", "")))
+        note_id = self._add(path, body, fields.get("created") or fallback,
+                            fields.get("modified") or fallback,
+                            _split_tags(fields.get("tags", "")))
+        if path.parent != self.folder:
+            self._notes[note_id]["dir"] = path.parent
+
+    def _into_folder(self, note: dict) -> None:
+        """Move a loose note file (the older layout) into its own folder, with its images."""
+        old = note["path"]
+        stem = old.stem
+        if TITLE_NAMED.match(old.name) or (self.folder / stem).exists():
+            stem = self._free_name(self.folder, note["created_at"]).name
+        note_dir = self.folder / stem
+        (note_dir / "images").mkdir(parents=True)
+        for rel in image_paths(note["body"]):
+            source = self.folder / rel
+            if source.is_file() and source.parent == self.folder / "images":
+                shutil.move(str(source), note_dir / "images" / source.name)
+        note["dir"], note["path"] = note_dir, note_dir / f"{stem}.md"
+        shutil.move(str(old), note["path"])
 
     def _add(self, path: Path, body: str, created: str, modified: str, tags: list[str]) -> int:
         note_id = self._next_id
         self._next_id += 1
-        self._notes[note_id] = {"id": note_id, "path": path, "body": body,
+        self._notes[note_id] = {"id": note_id, "dir": None, "path": path, "body": body,
                                 "title": title_from_text(body), "created_at": created,
                                 "modified_at": modified, "tags": tags}
         return note_id
 
     def _write(self, note: dict) -> None:
-        """Write the note to disk; a new note gets its file name here."""
+        """Write the note to disk; a new note gets its folder here."""
+        if note["path"] is None:
+            note["dir"] = self._free_name(self.folder, note["created_at"])
+            note["dir"].mkdir(parents=True)
+            note["path"] = note["dir"] / f"{note['dir'].name}.md"
         header = (f"---\ncreated: {note['created_at']}\nmodified: {note['modified_at']}\n"
                   f"tags: {', '.join(note['tags'])}\n---\n")
-        target = note["path"] or self._free_name(self.folder, note["created_at"])
+        target = note["path"]
         temp = target.with_name(f".{target.name}.tmp")
         temp.write_text(header + note["body"], encoding="utf-8", newline="\n")
         os.replace(temp, target)  # never leaves a half-written note behind
-        note["path"] = target
 
     @staticmethod
     def _free_name(folder: Path, created: str) -> Path:
-        """'2026-10-12.md' for the day's first note, then '2026-10-12-2.md' and so on."""
+        """'2026-10-12' for the day's first note, then '2026-10-12-2' and so on."""
         day = created[:10]
-        candidate, n = folder / f"{day}.md", 2
-        while candidate.exists():
-            candidate, n = folder / f"{day}-{n}.md", n + 1
+        candidate, n = folder / day, 2
+        while candidate.exists() or candidate.with_suffix(".md").exists():
+            candidate, n = folder / f"{day}-{n}", n + 1
         return candidate
 
-    def _rename_title_named(self) -> None:
-        old_style = [n for n in self._notes.values() if TITLE_NAMED.match(n["path"].name)]
-        for note in sorted(old_style, key=lambda n: n["created_at"]):
-            target = self._free_name(self.folder, note["created_at"])
-            note["path"].rename(target)
-            note["path"] = target
+    @staticmethod
+    def _remove_if_empty(folder: Path) -> None:
+        """Remove a folder if nothing but Finder / Explorer files is left in it."""
+        try:
+            leftovers = list(folder.iterdir())
+            if all(p.name in SYSTEM_FILES for p in leftovers):
+                for p in leftovers:
+                    p.unlink()
+            folder.rmdir()  # only succeeds when empty
+        except OSError:
+            pass
 
     def move_to(self, dest: Path) -> None:
-        """Move every note and image into another folder and keep working from there.
+        """Move every note folder into another folder and keep working from there.
 
-        Notes already in that folder are added to the list. A note whose file name is taken
+        Notes already in that folder are added to the list. A note whose folder name is taken
         gets the next free number for its day. The old folder is removed if nothing else is
         left in it.
         """
-        old_folder, old_images = self.folder, self.images_dir
-        new_images = dest / "images"
-        new_images.mkdir(parents=True, exist_ok=True)
-        already_there = sorted(dest.glob("*.md"))
-        for image in old_images.iterdir():
-            if image.is_file() and not (new_images / image.name).exists():
-                shutil.move(str(image), new_images / image.name)
+        old_folder = self.folder
+        dest.mkdir(parents=True, exist_ok=True)
+        already_there = sorted(dest.iterdir())
         for note in self._notes.values():
-            if note["path"] is None or not note["path"].exists():
+            if note["dir"] is None or not note["dir"].exists():
                 continue
-            target = dest / note["path"].name
+            target = dest / note["dir"].name
             if target.exists():
                 target = self._free_name(dest, note["created_at"])
-            shutil.move(str(note["path"]), target)
-            note["path"] = target
-        self.folder, self.images_dir = dest, new_images
-        for path in already_there:
-            self._load(path)
-        self._rename_title_named()
-        for folder in (old_images, old_folder):
-            try:
-                leftovers = list(folder.iterdir())
-                if all(p.name in SYSTEM_FILES for p in leftovers):
-                    for p in leftovers:
-                        p.unlink()
-                folder.rmdir()  # only succeeds when empty
-            except OSError:
-                pass
+            shutil.move(str(note["dir"]), target)
+            note_file = target / note["path"].name
+            if note_file.name != f"{target.name}.md":
+                note_file = note_file.rename(target / f"{target.name}.md")
+            note["dir"], note["path"] = target, note_file
+        self.folder = dest
+        self._load_paths(already_there)
+        self._remove_if_empty(old_folder / "images")
+        self._remove_if_empty(old_folder)
 
     @staticmethod
     def _trash(path: Path) -> None:
         """Move to the Recycle Bin / Trash, so a deleted note can be recovered."""
         if path.exists() and not QFile.moveToTrash(str(path)):
-            path.unlink(missing_ok=True)
+            if path.is_dir():
+                shutil.rmtree(path)
+            else:
+                path.unlink(missing_ok=True)
 
     # --- notes ------------------------------------------------------------
 
@@ -200,14 +249,23 @@ class NoteStore:
         return note["modified_at"]
 
     def delete_note(self, note_id: int) -> None:
-        """Move the note, and any images no other note uses, to the trash."""
+        """Move the note's whole folder, attachments included, to the trash."""
         note = self._notes.pop(note_id)
-        if note["path"] is not None:
-            self._trash(note["path"])
-        still_used = {p for other in self._notes.values() for p in image_paths(other["body"])}
-        for rel in image_paths(note["body"]):
-            if rel not in still_used:
-                self._trash(self.folder / rel)
+        self._trash(note["dir"] or note["path"])
+
+    def attachment_count(self, note_id: int) -> int:
+        """Files in the note's folder, not counting the note itself or its images folder."""
+        note = self._notes[note_id]
+        if note["dir"] is None or not note["dir"].is_dir():
+            return 0
+        count = 0
+        for root, dirs, files in os.walk(note["dir"]):
+            if Path(root) == note["dir"]:
+                dirs[:] = [d for d in dirs if d != "images"]
+            dirs[:] = [d for d in dirs if not d.startswith(".")]
+            count += sum(1 for f in files if not f.startswith(".") and f not in SYSTEM_FILES
+                         and Path(root, f) != note["path"])
+        return count
 
     def list_notes(self, search: str = "", tag: str | None = None) -> list[dict]:
         """Notes matching the search text (title, text or tag) and the tag filter, newest first."""

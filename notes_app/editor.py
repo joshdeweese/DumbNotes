@@ -76,10 +76,9 @@ class TitleHighlighter(QSyntaxHighlighter):
 class NoteEditor(QTextEdit):
     MAX_IMAGE_WIDTH = 640
 
-    def __init__(self, notes_dir: Path, parent=None):
+    def __init__(self, parent=None):
         super().__init__(parent)
-        self.notes_dir = notes_dir
-        self.images_dir = notes_dir / "images"
+        self.note_dir: Path | None = None  # image links are relative to this
         self.setAcceptRichText(False)
         font = self.document().defaultFont()
         font.setPointSize(FONT_SIZE)
@@ -101,8 +100,9 @@ class NoteEditor(QTextEdit):
 
     # --- text -------------------------------------------------------------
 
-    def set_text(self, text: str) -> None:
+    def set_text(self, text: str, note_dir: Path) -> None:
         """Show a note, turning its image links into the images themselves."""
+        self.note_dir = note_dir
         doc = self.document()
         doc.setUndoRedoEnabled(False)
         self.clear()
@@ -198,11 +198,12 @@ class NoteEditor(QTextEdit):
     def insert_image(self, image: QImage) -> None:
         if image.isNull():
             return
-        self.images_dir.mkdir(parents=True, exist_ok=True)
+        images_dir = self.note_dir / "images"
+        images_dir.mkdir(parents=True, exist_ok=True)
         file_name = f"{uuid.uuid4().hex}.png"
-        image.save(str(self.images_dir / file_name), "PNG")
+        image.save(str(images_dir / file_name), "PNG")
         fmt = QTextImageFormat()
-        fmt.setName(f"images/{file_name}")  # relative to the notes folder
+        fmt.setName(f"images/{file_name}")  # relative to the note's folder
         if image.width() > self.MAX_IMAGE_WIDTH:
             fmt.setWidth(self.MAX_IMAGE_WIDTH)
             fmt.setHeight(image.height() * self.MAX_IMAGE_WIDTH / image.width())
@@ -245,9 +246,10 @@ class NoteEditor(QTextEdit):
 
     def _natural_size(self, fmt: QTextImageFormat):
         name = fmt.name()
-        if name not in self._natural_sizes:
-            self._natural_sizes[name] = QImage(str(self.notes_dir / name)).size()
-        return self._natural_sizes[name]
+        path = str(self.note_dir / name)
+        if path not in self._natural_sizes:
+            self._natural_sizes[path] = QImage(path).size()
+        return self._natural_sizes[path]
 
     def _display_size(self, fmt: QTextImageFormat) -> QSizeF:
         natural = QSizeF(self._natural_size(fmt))
@@ -362,8 +364,8 @@ class NoteEditor(QTextEdit):
             self.resize_image(cursor, width)
 
     def loadResource(self, resource_type, url: QUrl):
-        # Image links are relative to the notes folder.
-        path = self.notes_dir / url.toString()
-        if url.isRelative() and path.is_file():
+        # Image links are relative to the note's folder.
+        path = self.note_dir / url.toString() if self.note_dir else None
+        if url.isRelative() and path is not None and path.is_file():
             return QImage(str(path))
         return super().loadResource(resource_type, url)

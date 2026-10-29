@@ -27,15 +27,17 @@ def migrate_database(db_path: Path, old_images: Path, store: NoteStore) -> int:
             """SELECT t.name FROM tags t JOIN note_tags nt ON nt.tag_id = t.id
                WHERE nt.note_id = ? ORDER BY t.name""", (note["id"],))]
         html = note["body_html"]
-        for name in IMG_SRC.findall(html):
-            source = old_images / name[1]
-            if source.is_file() and not (store.images_dir / name[1]).exists():
-                shutil.copy2(source, store.images_dir / name[1])
         html = IMG_SRC.sub(lambda m: f"{m[1]}images/{m[2]}{m[3]}", html)
         doc = QTextDocument()
         doc.setHtml(html)
         body = document_to_text(doc).replace(" ", " ")
-        store.import_note(body, note["created_at"], note["modified_at"], tags)
+        note_id = store.import_note(body, note["created_at"], note["modified_at"], tags)
+        images_dir = store.get_note(note_id)["dir"] / "images"
+        for name in IMG_SRC.findall(note["body_html"]):
+            source = old_images / name[1]
+            if source.is_file():
+                images_dir.mkdir(exist_ok=True)
+                shutil.copy2(source, images_dir / name[1])
     conn.close()
     db_path.rename(db_path.with_name(db_path.name + ".migrated"))
     return len(notes)
