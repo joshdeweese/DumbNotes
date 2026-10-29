@@ -136,7 +136,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.search)
         layout.addSpacing(2)
         layout.addWidget(self.notes_list, 1)
-        layout.addWidget(self.cheat_sheet, 2)  # the lower two thirds when shown
+        layout.addWidget(self.cheat_sheet)  # sized to fit all its examples when shown
         layout.addLayout(bottom_row)
         return pane
 

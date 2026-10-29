@@ -4,7 +4,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QFrame, QLabel, QSizePolicy, QVBoxLayout, QWidget
 
 from .style import ACCENT, FIELD, LINE, MUTED
 
@@ -92,15 +92,12 @@ class CheatSheet(QFrame):
             button = SnippetButton(snippet)
             button.clicked.connect(self.insert)
             items_layout.addWidget(button)
-        items_layout.addStretch(1)
-        scroll = QScrollArea(objectName="snippetScroll", widgetResizable=True)
-        scroll.setFrameShape(QFrame.Shape.NoFrame)
-        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        scroll.setWidget(items)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 10, 6, 6)
         layout.setSpacing(2)
         layout.addWidget(title)
         layout.addWidget(hint)
         layout.addSpacing(4)
-        layout.addWidget(scroll, 1)
+        layout.addWidget(items)
+        # Always tall enough to show every example; the note list gets the rest.
+        self.setSizePolicy(QSizePolicy.Policy.Preferred, QSizePolicy.Policy.Fixed)

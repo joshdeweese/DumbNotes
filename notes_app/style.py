@@ -70,7 +70,7 @@ QPushButton#markdownBtn:checked { background: $SELECTED; }
 #cheatSheet { background: $EDITOR; border: 1px solid $LINE; border-radius: 10px; }
 #cheatTitle { font-weight: 600; padding-left: 4px; }
 #cheatSheet #hint { padding-left: 4px; font-size: 11px; }
-#snippetScroll, #snippetList { background: transparent; }
+#snippetList { background: transparent; }
 #snippet { border-radius: 7px; }
 #snippet:hover { background: $HOVER; }
 QPushButton#attachBtn { background: transparent; color: $MUTED; padding: 3px 8px 3px 6px; }
