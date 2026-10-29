@@ -141,7 +141,7 @@ QPushButton#addTag:hover { background: $HOVER; color: $TEXT; }
 #tagPickerList { background: transparent; border: none; padding: 0; }
 #editor { background: $EDITOR; border: none; selection-background-color: $TEXT_SELECTION;
           selection-color: $TEXT; }
-#info, #hint { color: $MUTED; }
+#hint { color: $MUTED; }
 QPushButton#markdownBtn { background: transparent; padding: 6px 8px; }
 QPushButton#markdownBtn:hover { background: $HOVER; }
 QPushButton#markdownBtn:checked { background: $SELECTED; }

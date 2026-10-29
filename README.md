@@ -16,9 +16,9 @@ text file in a folder of its own, where you can also keep any other files that g
 - Paste images straight from the clipboard (e.g. Snipping Tool), or drop image files in. Drag an image's corner to resize it.
 - Tags: one word each, written `#tag` (spaces become `-`). They sit at the bottom right of a note;
   **+ Add Tag** picks an existing tag or creates a new one, and clicking a tag removes it.
-  **Manage tags…** renames, merges or deletes tags across all notes.
-- **View → Dark Mode** (Cmd/Ctrl+Shift+D) switches between the light and dark look; the app remembers it.
-- Notes autosave as you type. Created and modified times are shown under the editor.
+  **Options → Manage Tags…** renames, merges or deletes tags across all notes.
+- **Options → Dark Mode** (Cmd/Ctrl+Shift+D) switches between the light and dark look; the app remembers it.
+- Notes autosave as you type. Hover over a note in the list to see when it was created and last modified.
 - The folder button under the editor opens the note's folder in Finder / File Explorer. Its number is
   how many other files are in there (not counting the note itself or its pasted images).
 - Ctrl+N makes a new note; Delete in the list removes one.
@@ -79,8 +79,8 @@ Kitchen remodel
 `![|400](images/...)` is an image shown 400 px wide, relative to the note's folder. Deleting a note
 sends its whole folder, attachments included, to the Recycle Bin / Trash.
 
-To keep notes somewhere else (e.g. OneDrive or Dropbox), click **Notes folder…** at the bottom of
-the sidebar and pick a folder: every note folder is moved there and the app remembers it.
+To keep notes somewhere else (e.g. OneDrive or Dropbox), choose **Options → Notes Folder…**
+and pick a folder: every note folder is moved there and the app remembers it.
 The `NOTES_APP_DATA` environment variable, if set, overrides this.
 Notes from older versions are converted on first start: loose `.md` files are moved into
 folders of their own (with their images), and notes from the database version (`notes.db`) are

@@ -180,10 +180,12 @@ class NoteStore:
             note["path"] = note["dir"] / f"{note['dir'].name}.md"
         header = (f"---\ncreated: {note['created_at']}\nmodified: {note['modified_at']}\n"
                   f"tags: {', '.join(note['tags'])}\n---\n")
-        target = note["path"]
-        temp = target.with_name(f".{target.name}.tmp")
-        temp.write_text(header + note["body"], encoding="utf-8", newline="\n")
-        os.replace(temp, target)  # never leaves a half-written note behind
+        # Rewrite the file in place (not via a temporary file swapped in), so an edit changes
+        # only the .md file's date and the note's folder keeps its own date in Finder.
+        with open(note["path"], "w", encoding="utf-8", newline="\n") as f:
+            f.write(header + note["body"])
+            f.flush()
+            os.fsync(f.fileno())
 
     @staticmethod
     def _free_name(folder: Path, created: str) -> Path:

@@ -6,9 +6,9 @@ from datetime import datetime
 from pathlib import Path
 
 from PySide6.QtCore import QEvent, QFileSystemWatcher, QSettings, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QPainter, QShortcut
+from PySide6.QtGui import QAction, QDesktopServices, QKeySequence, QShortcut
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFrame,
-                               QHBoxLayout, QLabel, QListWidget, QListWidgetItem, QMainWindow,
+                               QHBoxLayout, QListWidget, QListWidgetItem, QMainWindow,
                                QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget)
 
 from .cheat_sheet import CheatSheet
@@ -32,23 +32,6 @@ def settings() -> QSettings:
 def fmt_ts(iso: str) -> str:
     when = datetime.fromisoformat(iso)
     return f"{when.strftime('%b')} {when.day}, {when.year} {clock(when)}"
-
-
-class ElidedLabel(QLabel):
-    """One-line label that shortens itself with '…' when the tags need the room."""
-
-    def minimumSizeHint(self) -> QSize:
-        return QSize(40, super().minimumSizeHint().height())
-
-    def setText(self, text: str) -> None:
-        super().setText(text)
-        self.setToolTip(text)
-
-    def paintEvent(self, event) -> None:
-        painter = QPainter(self)
-        painter.setPen(self.palette().color(self.foregroundRole()))
-        text = self.fontMetrics().elidedText(self.text(), Qt.TextElideMode.ElideRight, self.width())
-        painter.drawText(self.rect(), int(self.alignment()), text)
 
 
 class MainWindow(QMainWindow):
@@ -77,11 +60,17 @@ class MainWindow(QMainWindow):
         new_action.triggered.connect(self.new_note)
         self.addAction(new_action)
 
-        view_menu = self.menuBar().addMenu("View")
+        # Called Options rather than View: macOS adds a full-screen item to a "View" menu.
+        options = self.menuBar().addMenu("Options")
+        options.setToolTipsVisible(True)
+        options.addAction("Manage Tags…", self.manage_tags)
+        self.folder_action = options.addAction("Notes Folder…", self.choose_folder)
+        self._update_folder_tooltip()
+        options.addSeparator()
         self.dark_action = QAction("Dark Mode", self, checkable=True, checked=is_dark(),
                                    shortcut="Ctrl+Shift+D")
         self.dark_action.toggled.connect(self.set_dark_mode)
-        view_menu.addAction(self.dark_action)
+        options.addAction(self.dark_action)
         self._apply_icons()
 
         self.refresh_known_tags()
@@ -111,11 +100,6 @@ class MainWindow(QMainWindow):
         delete_shortcut.setContext(Qt.ShortcutContext.WidgetShortcut)
         delete_shortcut.activated.connect(self.delete_note)
 
-        manage_btn = QPushButton("Manage tags…", objectName="flat")
-        manage_btn.clicked.connect(self.manage_tags)
-        self.folder_btn = QPushButton("Notes folder…", objectName="flat")
-        self.folder_btn.clicked.connect(self.choose_folder)
-        self._update_folder_tooltip()
         self.cheat_sheet = CheatSheet()
         self.cheat_sheet.insert.connect(self.insert_snippet)
         self.cheat_sheet.hide()
@@ -126,8 +110,6 @@ class MainWindow(QMainWindow):
         self.markdown_btn.toggled.connect(self.cheat_sheet.setVisible)
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(4)
-        bottom_row.addWidget(manage_btn)
-        bottom_row.addWidget(self.folder_btn)
         bottom_row.addStretch(1)
         bottom_row.addWidget(self.markdown_btn)
 
@@ -161,7 +143,6 @@ class MainWindow(QMainWindow):
         top_row.addStretch(1)
         top_row.addWidget(self.delete_btn)
 
-        self.info = ElidedLabel(objectName="info")
 
         top_row.setContentsMargins(20, 6, 20, 0)
 
@@ -177,7 +158,7 @@ class MainWindow(QMainWindow):
         footer.setContentsMargins(20, 6, 24, 10)
         footer.setSpacing(10)
         footer.addWidget(self.attach_btn)
-        footer.addWidget(self.info, 1)
+        footer.addStretch(1)
         footer.addWidget(self.tag_bar)
 
         pane = QWidget(objectName="editorPane")
@@ -278,7 +259,6 @@ class MainWindow(QMainWindow):
         self.editor.blockSignals(False)
         self.saved_state = self._editor_state()
         self._set_editing_enabled(True)
-        self._show_info(note["created_at"], note["modified_at"])
         self.update_attachments()
 
     def update_attachments(self) -> None:
@@ -313,9 +293,6 @@ class MainWindow(QMainWindow):
     def _editor_state(self) -> tuple[str, tuple[str, ...]]:
         return self.editor.text(), tuple(self.tag_bar.tags())
 
-    def _show_info(self, created: str, modified: str) -> None:
-        self.info.setText(f"Created {fmt_ts(created)}   ·   Modified {fmt_ts(modified)}")
-
     def schedule_save(self) -> None:
         if self.current_id is not None:
             self.save_timer.start()
@@ -333,7 +310,6 @@ class MainWindow(QMainWindow):
 
         note = self.store.get_note(self.current_id)
         title = note["title"]
-        self._show_info(note["created_at"], modified)
         item = self._item_for(self.current_id)
         if tags_changed:
             self.refresh_known_tags()
@@ -376,7 +352,6 @@ class MainWindow(QMainWindow):
         self.editor.clear()
         self.editor.blockSignals(False)
         self.tag_bar.set_tags([])
-        self.info.clear()
         self.update_attachments()
         self._set_editing_enabled(False)
         self.refresh_known_tags()
@@ -384,8 +359,7 @@ class MainWindow(QMainWindow):
         self._select_first_note()
 
     def _update_folder_tooltip(self) -> None:
-        self.folder_btn.setToolTip(f"Notes are saved in\n{self.store.folder}\n\n"
-                                   "Click to choose another folder")
+        self.folder_action.setToolTip(f"Notes are saved in {self.store.folder}")
 
     def choose_folder(self) -> None:
         """Pick a new notes folder and move every note and image into it."""
