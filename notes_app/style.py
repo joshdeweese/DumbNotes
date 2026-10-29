@@ -64,6 +64,12 @@ QPushButton#addTag:hover { background: $HOVER; color: $TEXT; }
 #tagPickerList { background: transparent; border: none; padding: 0; }
 #editor { background: $EDITOR; border: none; selection-background-color: #F2D7C9; selection-color: $TEXT; }
 #info, #hint { color: $MUTED; }
+QPushButton#markdownBtn { background: transparent; padding: 6px 8px; }
+QPushButton#markdownBtn:hover { background: $HOVER; }
+QPushButton#markdownBtn:checked { background: $SELECTED; }
+#cheatSheet { background: $EDITOR; border: 1px solid $LINE; border-radius: 10px; }
+#cheatTitle { font-weight: 600; padding-left: 4px; }
+#cheatView { background: transparent; border: none; }
 QPushButton#attachBtn { background: transparent; color: $MUTED; padding: 3px 8px 3px 6px; }
 QPushButton#attachBtn:hover { background: $HOVER; color: $TEXT; }
 

@@ -11,6 +11,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QFileDialog, QFrame, QHBoxLayo
                                QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
                                QPushButton, QSplitter, QVBoxLayout, QWidget)
 
+from .cheat_sheet import CheatSheet
 from .editor import NoteEditor
 from .file_store import NoteStore, parse_search, title_from_text
 from .notes_list import HEADER_ROLE, ID_ROLE, NOTE_ROLE, NoteDelegate, clock, month_label
@@ -18,6 +19,7 @@ from .tag_dialog import ManageTagsDialog
 from .tag_bar import SearchEdit, TagBar
 
 FOLDER_ICON = Path(__file__).with_name("folder.svg")
+MARKDOWN_ICON = Path(__file__).with_name("markdown.svg")
 FILE_MANAGER = {"darwin": "Finder", "win32": "File Explorer"}.get(sys.platform, "file manager")
 AUTOSAVE_MS = 800
 FOLDER_SETTING = "notes_folder"
@@ -107,10 +109,20 @@ class MainWindow(QMainWindow):
         self.folder_btn = QPushButton("Notes folder…", objectName="flat")
         self.folder_btn.clicked.connect(self.choose_folder)
         self._update_folder_tooltip()
+        self.cheat_sheet = CheatSheet()
+        self.cheat_sheet.hide()
+        self.markdown_btn = QPushButton(objectName="markdownBtn", checkable=True,
+                                        icon=QIcon(str(MARKDOWN_ICON)),
+                                        toolTip="Markdown cheat sheet")
+        self.markdown_btn.setIconSize(QSize(26, 16))
+        self.markdown_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.markdown_btn.toggled.connect(self.cheat_sheet.setVisible)
         bottom_row = QHBoxLayout()
         bottom_row.setSpacing(4)
         bottom_row.addWidget(manage_btn)
         bottom_row.addWidget(self.folder_btn)
+        bottom_row.addStretch(1)
+        bottom_row.addWidget(self.markdown_btn)
 
         pane = QWidget(objectName="sidebar")
         pane.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
@@ -123,6 +135,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.search)
         layout.addSpacing(2)
         layout.addWidget(self.notes_list, 1)
+        layout.addWidget(self.cheat_sheet, 1)  # same stretch: the lower half when shown
         layout.addLayout(bottom_row)
         return pane
 
