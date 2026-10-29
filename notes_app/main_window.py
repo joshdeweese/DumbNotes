@@ -110,6 +110,7 @@ class MainWindow(QMainWindow):
         self.folder_btn.clicked.connect(self.choose_folder)
         self._update_folder_tooltip()
         self.cheat_sheet = CheatSheet()
+        self.cheat_sheet.insert.connect(self.insert_snippet)
         self.cheat_sheet.hide()
         self.markdown_btn = QPushButton(objectName="markdownBtn", checkable=True,
                                         icon=QIcon(str(MARKDOWN_ICON)),
@@ -135,7 +136,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.search)
         layout.addSpacing(2)
         layout.addWidget(self.notes_list, 1)
-        layout.addWidget(self.cheat_sheet, 1)  # same stretch: the lower half when shown
+        layout.addWidget(self.cheat_sheet, 2)  # the lower two thirds when shown
         layout.addLayout(bottom_row)
         return pane
 
@@ -424,6 +425,11 @@ class MainWindow(QMainWindow):
         self._update_folder_tooltip()
         self.refresh_known_tags()
         self.refresh_list()
+
+    def insert_snippet(self, snippet) -> None:
+        """Add Markdown clicked in the cheat sheet to the open note, at the cursor."""
+        if self.current_id is not None:
+            self.editor.insert_snippet(snippet)
 
     def manage_tags(self) -> None:
         self.save_current()

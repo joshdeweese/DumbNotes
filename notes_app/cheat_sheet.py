@@ -1,63 +1,102 @@
-"""Markdown cheat sheet shown in the lower half of the note list panel."""
+"""Markdown cheat sheet in the note list panel: click an example to insert it into the note."""
 
-from html import escape
+from dataclasses import dataclass
 
-from PySide6.QtWidgets import QFrame, QLabel, QTextBrowser, QVBoxLayout
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 
-from .style import ACCENT, FIELD, LINE, MUTED, TEXT
+from .style import ACCENT, FIELD, LINE, MUTED
 
 MONO = "Menlo, Consolas, monospace"
 
-# (element, what you type, how it shows) - the last is HTML.
-ROWS = [
-    ("Headings", "# Heading 1\n## Heading 2\n### Heading 3",
-     '<span style="font-size:17pt; font-weight:700;">Heading 1</span><br>'
-     '<span style="font-size:14pt; font-weight:700;">Heading 2</span><br>'
-     '<span style="font-size:12pt; font-weight:700;">Heading 3</span>'),
-    ("Bold", "**bold text**", "<b>bold text</b>"),
-    ("Italic", "*italic text*", "<i>italic text</i>"),
-    ("Blockquote", "> a quote",
-     f'<span style="color:{LINE};">▌</span> <i style="color:{MUTED};">a quote</i>'),
-    ("Unordered list", "- First item\n- Second item\n  - Nested item",
-     "•&nbsp; First item<br>•&nbsp; Second item<br>&nbsp;&nbsp;&nbsp;◦&nbsp; Nested item"),
-    ("Code", "`inline code`\n```\ncode block\n```",
-     f'<span style="font-family:{MONO}; background:{FIELD};">&nbsp;inline code&nbsp;</span>'
-     f'<table cellpadding="4" style="margin-top:6px;" width="100%"><tr>'
-     f'<td style="background:{FIELD}; font-family:{MONO};">code block</td></tr></table>'),
-    ("Horizontal rule", "---",
-     f'<table width="100%" cellspacing="0" cellpadding="0"><tr>'
-     f'<td style="background:{LINE}; font-size:1pt;">&nbsp;</td></tr></table>'),
-    ("Link", "[title](https://x.com)",
-     f'<span style="color:{ACCENT}; text-decoration:underline;">title</span>'),
+
+@dataclass(frozen=True)
+class Snippet:
+    """Markdown to insert: before + placeholder + after. The placeholder is left selected
+    (or replaced by the selected text). Line snippets go at the start of a line."""
+    name: str
+    html: str  # how the example looks in the cheat sheet
+    before: str
+    placeholder: str = ""
+    after: str = ""
+    line: bool = False
+    cursor_after: int | None = None  # when wrapping a selection, put the cursor this far into `after`
+
+
+SNIPPETS = [
+    Snippet("Heading 1", '<span style="font-size:17pt; font-weight:700;">Heading 1</span>',
+            "# ", line=True),
+    Snippet("Heading 2", '<span style="font-size:14pt; font-weight:700;">Heading 2</span>',
+            "## ", line=True),
+    Snippet("Heading 3", '<span style="font-size:12pt; font-weight:700;">Heading 3</span>',
+            "### ", line=True),
+    Snippet("Bold", "<b>Bold text</b>", "**", "bold text", "**"),
+    Snippet("Italic", "<i>Italic text</i>", "*", "italic text", "*"),
+    Snippet("Blockquote", f'<span style="color:{LINE};">▌</span>&nbsp;'
+                          f'<i style="color:{MUTED};">A quote</i>', "> ", line=True),
+    Snippet("Unordered list", "•&nbsp; List item", "- ", line=True),
+    Snippet("Inline code", f'<span style="font-family:{MONO}; background:{FIELD};">'
+                           f'&nbsp;inline code&nbsp;</span>', "`", "code", "`"),
+    Snippet("Code block", f'<table width="100%" cellpadding="5"><tr><td style="background:'
+                          f'{FIELD}; font-family:{MONO};">code block</td></tr></table>',
+            "```\n", "code", "\n```", line=True),
+    Snippet("Horizontal rule", f'<table width="100%" cellspacing="0" cellpadding="0"><tr>'
+                               f'<td style="background:{LINE}; font-size:1pt;">&nbsp;</td>'
+                               f'</tr></table>', "---\n", line=True),
+    Snippet("Link", f'<span style="color:{ACCENT}; text-decoration:underline;">Link text</span>',
+            "[", "link text", "](https://)", cursor_after=len("](https://")),
 ]
 
 
-def cheat_sheet_html() -> str:
-    rows = []
-    for i, (element, markdown, result) in enumerate(ROWS):
-        shade = "#FAF9F6" if i % 2 == 0 else "#FFFFFF"
-        code = escape(markdown).replace("\n", "<br>").replace("  ", "&nbsp;&nbsp;")
-        rows.append(
-            f'<tr style="background:{shade};">'
-            f'<td width="52%" valign="top">'
-            f'<div style="color:{MUTED}; font-size:8pt; font-weight:600;">{element.upper()}</div>'
-            f'<div style="font-family:{MONO}; font-size:9.5pt; color:{TEXT};">{code}</div></td>'
-            f'<td width="48%" valign="middle" style="color:{TEXT};">{result}</td></tr>')
-    header = (f'<tr><td style="color:{MUTED}; font-size:8pt; font-weight:600;">YOU TYPE</td>'
-              f'<td style="color:{MUTED}; font-size:8pt; font-weight:600;">SHOWS AS</td></tr>')
-    return (f'<table width="100%" cellspacing="0" cellpadding="7">{header}{"".join(rows)}'
-            f'</table>')
+class SnippetButton(QFrame):
+    clicked = Signal(object)
+
+    def __init__(self, snippet: Snippet, parent=None):
+        super().__init__(parent, objectName="snippet")
+        self.snippet = snippet
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        markdown = (snippet.before + snippet.placeholder + snippet.after).replace("\n", " ⏎ ")
+        self.setToolTip(f"{snippet.name}: inserts  {markdown.strip()}")
+        label = QLabel(snippet.html, objectName="snippetLabel")
+        label.setTextFormat(Qt.TextFormat.RichText)
+        label.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(10, 6, 10, 6)
+        layout.addWidget(label)
+
+    def mouseReleaseEvent(self, event):
+        if event.button() == Qt.MouseButton.LeftButton and self.rect().contains(
+                event.position().toPoint()):
+            self.clicked.emit(self.snippet)
+        super().mouseReleaseEvent(event)
 
 
 class CheatSheet(QFrame):
+    """Clickable Markdown examples; `insert` fires with the Snippet that was clicked."""
+
+    insert = Signal(object)
+
     def __init__(self, parent=None):
         super().__init__(parent, objectName="cheatSheet")
-        title = QLabel("Markdown cheat sheet", objectName="cheatTitle")
-        view = QTextBrowser(objectName="cheatView", openLinks=False)
-        view.setFrameShape(QFrame.Shape.NoFrame)
-        view.setHtml(cheat_sheet_html())
+        title = QLabel("Markdown", objectName="cheatTitle")
+        hint = QLabel("Click to add to your note", objectName="hint")
+        items = QWidget(objectName="snippetList")
+        items_layout = QVBoxLayout(items)
+        items_layout.setContentsMargins(0, 0, 0, 0)
+        items_layout.setSpacing(2)
+        for snippet in SNIPPETS:
+            button = SnippetButton(snippet)
+            button.clicked.connect(self.insert)
+            items_layout.addWidget(button)
+        items_layout.addStretch(1)
+        scroll = QScrollArea(objectName="snippetScroll", widgetResizable=True)
+        scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        scroll.setWidget(items)
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 6, 6)
-        layout.setSpacing(4)
+        layout.setContentsMargins(6, 10, 6, 6)
+        layout.setSpacing(2)
         layout.addWidget(title)
-        layout.addWidget(view, 1)
+        layout.addWidget(hint)
+        layout.addSpacing(4)
+        layout.addWidget(scroll, 1)

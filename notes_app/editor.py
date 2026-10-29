@@ -159,6 +159,46 @@ class NoteEditor(QTextEdit):
 
     # --- live markdown ----------------------------------------------------
 
+    def insert_snippet(self, snippet) -> None:
+        """Insert Markdown from the cheat sheet at the cursor.
+
+        Text in between the symbols is the selection if there is one (so selecting a word and
+        clicking Bold makes it bold), otherwise a placeholder left selected to type over.
+        Line snippets (headings, lists, ...) start a new line if the cursor is mid-line.
+        """
+        cursor = self.textCursor()
+        selected = cursor.selectedText().replace("\u2029", "\n")
+        if OBJECT in selected:  # don't wrap images; add after the selection instead
+            cursor.setPosition(cursor.selectionEnd())
+            selected = ""
+        middle = selected or snippet.placeholder
+        cursor.beginEditBlock()
+        if selected:
+            cursor.removeSelectedText()
+        before = snippet.before
+        if snippet.line and cursor.block().text()[:cursor.positionInBlock()].strip():
+            before = "\n" + before
+            while cursor.block().text()[cursor.positionInBlock():][:1] == " ":
+                cursor.deleteChar()  # the text moved to the new line shouldn't start with a space
+        after = snippet.after
+        if snippet.line and snippet.after and cursor.block().text()[cursor.positionInBlock():]:
+            after += "\n"  # e.g. a code block's closing ``` gets a line of its own
+        cursor.insertText(before)
+        start = cursor.position()
+        cursor.insertText(middle)
+        end = cursor.position()
+        cursor.insertText(after)
+        cursor.endEditBlock()
+        if middle and not selected:
+            cursor.setPosition(start)
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        elif selected and snippet.cursor_after is not None:
+            cursor.setPosition(end + snippet.cursor_after)  # e.g. ready to type a link's address
+        elif middle:
+            cursor.setPosition(end)
+        self.setTextCursor(cursor)
+        self.setFocus()
+
     def _update_raw_line(self) -> None:
         """Show the line being edited as plain text and every other line formatted."""
         line = self.textCursor().blockNumber() if self.hasFocus() else None

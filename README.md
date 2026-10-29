@@ -10,6 +10,8 @@ text file in a folder of its own, where you can also keep any other files that g
   shown formatted (headings, **bold**, *italic*, ~~strike~~, `code`, bullets, `- [ ]` checkboxes
   you can click, > quotes, links, --- rules and ``` code blocks). The file stays plain Markdown.
   Cmd+click (Ctrl+click on Windows) opens a link. The first line is the title and is shown larger.
+- The Markdown button (M↓) at the bottom of the note list opens a panel of examples; click one to
+  add it to your note at the cursor (or around the selected text).
 - Bullets: start a line with `- `; Enter continues the list, Tab / Shift+Tab nest it, Enter on an empty bullet ends it.
 - Paste images straight from the clipboard (e.g. Snipping Tool), or drop image files in. Drag an image's corner to resize it.
 - Tags: one word each, written `#tag` (spaces become `-`). They sit at the bottom right of a note;
