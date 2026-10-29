@@ -25,6 +25,7 @@ HANDLE = 12  # size of the drag-to-resize square on an image's bottom-right corn
 MIN_IMAGE_WIDTH = 20
 TEXT_COLUMN_WIDTH = 760
 BULLET = re.compile(r"^(\s*)([-*])(\s+)(.*)$")
+TASK = re.compile(r"^\[[ xX]\](\s+)")
 INDENT = "  "
 OBJECT = "\ufffc"  # the character Qt puts in the text where an image sits
 
@@ -124,6 +125,9 @@ class NoteEditor(QTextEdit):
         bullet = BULLET.match(cursor.block().text())
         if bullet and not cursor.hasSelection():
             indent, marker, space, content = bullet.groups()
+            task = TASK.match(content)  # "- [ ] ..." continues as another unticked task
+            if task:
+                space, content = space + "[ ]" + task.group(1), content[task.end():]
             if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
                 if not content.strip():
                     # Enter on an empty bullet ends the list (or steps out a level).

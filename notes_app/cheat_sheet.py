@@ -1,6 +1,7 @@
 """Markdown cheat sheet in the note list panel: click an example to insert it into the note."""
 
 from dataclasses import dataclass
+from pathlib import Path
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
@@ -8,6 +9,7 @@ from PySide6.QtWidgets import QFrame, QLabel, QScrollArea, QVBoxLayout, QWidget
 from .style import ACCENT, FIELD, LINE, MUTED
 
 MONO = "Menlo, Consolas, monospace"
+CHECKBOX = (Path(__file__).with_name("checkbox.svg")).as_posix()
 
 
 @dataclass(frozen=True)
@@ -35,6 +37,8 @@ SNIPPETS = [
     Snippet("Blockquote", f'<span style="color:{LINE};">▌</span>&nbsp;'
                           f'<i style="color:{MUTED};">A quote</i>', "> ", line=True),
     Snippet("Unordered list", "•&nbsp; List item", "- ", line=True),
+    Snippet("Task list", f'<img src="{CHECKBOX}" width="14" height="14" '
+                         f'style="vertical-align:middle;">&nbsp; Task item', "- [ ] ", line=True),
     Snippet("Inline code", f'<span style="font-family:{MONO}; background:{FIELD};">'
                            f'&nbsp;inline code&nbsp;</span>', "`", "code", "`"),
     Snippet("Code block", f'<table width="100%" cellpadding="5"><tr><td style="background:'
