@@ -40,10 +40,15 @@ def now() -> str:
     return datetime.now().isoformat(timespec="seconds")
 
 
+MARKDOWN_LINK = re.compile(r"\[([^\]\n]+)\]\([^)\s]+\)")
+MARKDOWN_MARKS = re.compile(r"^\s*(#{1,6}\s+|>\s?|[-*+]\s+(\[[ xX]\]\s+)?)|\*\*|__|~~|`")
+
+
 def title_from_text(text: str) -> str:
-    """The first non-empty line, ignoring image links."""
+    """The first non-empty line, without image links or Markdown symbols."""
     for line in text.splitlines():
-        line = IMAGE_LINK.sub("", line).strip()
+        line = IMAGE_LINK.sub("", line)
+        line = MARKDOWN_MARKS.sub("", MARKDOWN_LINK.sub(r"\1", line)).strip()
         if line:
             return line[:80]
     return ""

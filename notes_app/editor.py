@@ -1,22 +1,25 @@
-"""Plain text editor with pasted images shown inline.
+"""Plain text editor with pasted images shown inline and live Markdown formatting.
 
 The note is saved as plain text; each image is written as a Markdown link such as
-![|400](images/abc.png), where 400 is the width it was resized to.
+![|400](images/abc.png), where 400 is the width it was resized to. Every line except the one
+being edited is shown with its Markdown formatted (see markdown.py).
 """
 
 import re
 import uuid
 from pathlib import Path
 
-from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, QUrl
-from PySide6.QtGui import (QFont, QImage, QPainter, QPen, QPixmap, QSyntaxHighlighter,
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSizeF, Qt, QUrl
+from PySide6.QtGui import (QColor, QDesktopServices, QImage, QPainter, QPen, QPixmap,
                            QTextCharFormat, QTextCursor, QTextDocument, QTextImageFormat)
 from PySide6.QtWidgets import QInputDialog, QMenu, QTextEdit
 
 from .file_store import IMAGE_LINK
+from .markdown import CODE_LINE, LineKind, MarkdownHighlighter, link_at
+from .style import ACCENT, FIELD, LINE, TEXT
 
 FONT_SIZE = 12
-TITLE_SIZE = 22
+BULLET_GLYPHS = "•◦▪"  # by nesting level
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 HANDLE = 12  # size of the drag-to-resize square on an image's bottom-right corner
 MIN_IMAGE_WIDTH = 20
@@ -51,28 +54,6 @@ def document_to_text(doc: QTextDocument) -> str:
     return "\n".join(lines)
 
 
-class TitleHighlighter(QSyntaxHighlighter):
-    """Shows the note's first line larger and bold. Only the display changes."""
-
-    def __init__(self, doc: QTextDocument):
-        super().__init__(doc)
-        self.fmt = QTextCharFormat()
-        self.fmt.setFontPointSize(TITLE_SIZE)
-        self.fmt.setFontWeight(QFont.Weight.DemiBold)
-
-    def highlightBlock(self, text: str) -> None:
-        # Block state 1 means the title has been reached at or before this block.
-        if self.previousBlockState() == 1:
-            self.setCurrentBlockState(1)
-            return
-        if not text.replace(OBJECT, "").strip():
-            self.setCurrentBlockState(0)
-            return
-        self.setCurrentBlockState(1)
-        for match in re.finditer(f"[^{OBJECT}]+", text):  # leave images alone
-            self.setFormat(match.start(), match.end() - match.start(), self.fmt)
-
-
 class NoteEditor(QTextEdit):
     MAX_IMAGE_WIDTH = 640
 
@@ -83,7 +64,8 @@ class NoteEditor(QTextEdit):
         font = self.document().defaultFont()
         font.setPointSize(FONT_SIZE)
         self.document().setDefaultFont(font)
-        self.highlighter = TitleHighlighter(self.document())
+        self.highlighter = MarkdownHighlighter(self.document())
+        self.cursorPositionChanged.connect(self._update_raw_line)
         # Image under the mouse as (document position, rect), and the drag in progress.
         self._hover: tuple[int, QRectF] | None = None
         self._drag: dict | None = None
@@ -103,6 +85,7 @@ class NoteEditor(QTextEdit):
     def set_text(self, text: str, note_dir: Path) -> None:
         """Show a note, turning its image links into the images themselves."""
         self.note_dir = note_dir
+        self.highlighter.raw_block = None
         doc = self.document()
         doc.setUndoRedoEnabled(False)
         self.clear()
@@ -119,6 +102,7 @@ class NoteEditor(QTextEdit):
             cursor.insertText(line[pos:], plain)
         doc.setUndoRedoEnabled(True)
         self.setTextCursor(QTextCursor(doc))
+        self._update_raw_line()
 
     def _insert_image_link(self, cursor: QTextCursor, name: str, alt: str) -> None:
         fmt = QTextImageFormat()
@@ -172,6 +156,130 @@ class NoteEditor(QTextEdit):
             start.movePosition(QTextCursor.MoveOperation.NextCharacter,
                                QTextCursor.MoveMode.KeepAnchor, len(INDENT))
             start.removeSelectedText()
+
+    # --- live markdown ----------------------------------------------------
+
+    def _update_raw_line(self) -> None:
+        """Show the line being edited as plain text and every other line formatted."""
+        line = self.textCursor().blockNumber() if self.hasFocus() else None
+        old = self.highlighter.raw_block
+        if line == old:
+            return
+        self.highlighter.raw_block = line
+        for number in (old, line):
+            block = self.document().findBlockByNumber(number) if number is not None else None
+            if block is not None and block.isValid():
+                self.highlighter.rehighlightBlock(block)
+
+    def focusInEvent(self, event):
+        super().focusInEvent(event)
+        self._update_raw_line()
+
+    def focusOutEvent(self, event):
+        super().focusOutEvent(event)
+        if event.reason() != Qt.FocusReason.PopupFocusReason:  # e.g. the right-click menu
+            self._update_raw_line()
+
+    def _visible_blocks(self):
+        """(block, rect in viewport coordinates) for each line on screen."""
+        block = self.cursorForPosition(QPoint(0, 0)).block()
+        layout = self.document().documentLayout()
+        dx, dy = -self.horizontalScrollBar().value(), -self.verticalScrollBar().value()
+        while block.isValid():
+            rect = layout.blockBoundingRect(block).translated(dx, dy)
+            if rect.top() > self.viewport().height():
+                break
+            yield block, rect
+            block = block.next()
+
+    def _char_rect(self, position: int) -> QRectF:
+        """Where the character at a document position is drawn."""
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(position)
+        left = self.cursorRect(cursor)
+        cursor.setPosition(position + 1)
+        right = self.cursorRect(cursor)
+        return QRectF(left.left(), left.top(), right.left() - left.left(), left.height())
+
+    def _checkbox_rect(self, block) -> QRectF | None:
+        box = LineKind.checkbox(block.text())
+        if box is None or block.blockNumber() == self.highlighter.raw_block:
+            return None
+        left = self._char_rect(block.position() + box.start(4) - 1)
+        right = self._char_rect(block.position() + box.end(4))
+        size = min(left.height() * 0.62, right.right() - left.left())
+        return QRectF(left.left() + (right.right() - left.left() - size) / 2,
+                      left.center().y() - size / 2, size, size)
+
+    def _paint_code_backgrounds(self) -> None:
+        painter = QPainter(self.viewport())
+        margin = self.document().documentMargin()
+        for block, rect in self._visible_blocks():
+            if block.userState() > 0 and block.userState() & CODE_LINE:
+                painter.fillRect(rect.adjusted(margin - 6, 0, -margin, 0), QColor(FIELD))
+
+    def _paint_markdown(self) -> None:
+        """Draw what text styling can't: bullets, checkboxes, quote bars and rules."""
+        painter = QPainter(self.viewport())
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        margin = self.document().documentMargin()
+        for block, rect in self._visible_blocks():
+            if block.blockNumber() == self.highlighter.raw_block:
+                continue
+            if block.userState() > 0 and block.userState() & CODE_LINE:
+                continue
+            text, start = block.text(), block.position()
+            if LineKind.rule(text):
+                y = rect.center().y()
+                painter.setPen(QPen(QColor(LINE), 1.5))
+                painter.drawLine(QPointF(rect.left() + margin, y), QPointF(rect.right() - margin, y))
+            elif LineKind.quote(text):
+                bar = self._char_rect(start)
+                painter.fillRect(QRectF(bar.left() + 1, rect.top() + 2, 3, rect.height() - 4),
+                                 QColor(LINE))
+            elif LineKind.checkbox(text):
+                box = self._checkbox_rect(block)
+                checked = LineKind.checkbox(text).group(4) != " "
+                painter.setPen(QPen(QColor(ACCENT if checked else "#B9B6AC"), 1.3))
+                painter.setBrush(QColor(ACCENT) if checked else Qt.BrushStyle.NoBrush)
+                painter.drawRoundedRect(box, 3, 3)
+                if checked:
+                    painter.setPen(QPen(QColor("white"), 1.6))
+                    s, x, y = box.width(), box.left(), box.top()
+                    painter.drawPolyline([QPointF(x + s * .25, y + s * .52),
+                                          QPointF(x + s * .43, y + s * .70),
+                                          QPointF(x + s * .76, y + s * .32)])
+                painter.setBrush(Qt.BrushStyle.NoBrush)
+            elif LineKind.bullet(text):
+                bullet = LineKind.bullet(text)
+                level = len(bullet.group(1).expandtabs(len(INDENT))) // len(INDENT)
+                painter.setPen(QColor(TEXT))
+                painter.drawText(self._char_rect(start + bullet.start(2)),
+                                 Qt.AlignmentFlag.AlignCenter,
+                                 BULLET_GLYPHS[level % len(BULLET_GLYPHS)])
+
+    def _toggle_checkbox_at(self, pos: QPointF) -> bool:
+        block = self.cursorForPosition(pos.toPoint()).block()
+        box = self._checkbox_rect(block)
+        if box is None or not box.adjusted(-3, -3, 3, 3).contains(pos):
+            return False
+        mark = LineKind.checkbox(block.text())
+        cursor = QTextCursor(self.document())
+        cursor.setPosition(block.position() + mark.start(4))
+        cursor.movePosition(QTextCursor.MoveOperation.NextCharacter,
+                            QTextCursor.MoveMode.KeepAnchor)
+        cursor.insertText(" " if mark.group(4) != " " else "x")
+        return True
+
+    def _open_link_at(self, pos: QPoint) -> bool:
+        cursor = self.cursorForPosition(pos)
+        url = link_at(cursor.block().text(), cursor.positionInBlock())
+        if url is None:
+            url = link_at(cursor.block().text(), cursor.positionInBlock() - 1)
+        if url is None:
+            return False
+        QDesktopServices.openUrl(QUrl(url if "://" in url else f"https://{url}"))
+        return True
 
     # --- images -----------------------------------------------------------
 
@@ -277,6 +385,13 @@ class NoteEditor(QTextEdit):
             self._drag = {"position": position, "rect": rect,
                           "start_x": event.position().x(), "width": rect.width()}
             return
+        if event.button() == Qt.MouseButton.LeftButton:
+            if self._toggle_checkbox_at(event.position()):
+                return
+            # Cmd+click (Ctrl+click on Windows) opens a link.
+            if event.modifiers() & Qt.KeyboardModifier.ControlModifier and self._open_link_at(
+                    event.position().toPoint()):
+                return
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event):
@@ -312,7 +427,9 @@ class NoteEditor(QTextEdit):
         super().leaveEvent(event)
 
     def paintEvent(self, event):
+        self._paint_code_backgrounds()
         super().paintEvent(event)
+        self._paint_markdown()
         if self._hover is None and self._drag is None:
             return
         painter = QPainter(self.viewport())

@@ -6,7 +6,10 @@ text file in a folder of its own, where you can also keep any other files that g
 - Left pane: every note with the day it was last modified, newest first, grouped by month.
 - Search: type words to find in note text, `#tag` to show notes with that tag, or both,
   e.g. `oak #kitchen #2026` (a note has to match everything). Typing `#` suggests existing tags.
-- Right pane: plain text editor. The first line is the title and is shown larger.
+- Right pane: plain text editor with live Markdown: every line except the one you're editing is
+  shown formatted (headings, **bold**, *italic*, ~~strike~~, `code`, bullets, `- [ ]` checkboxes
+  you can click, > quotes, links, --- rules and ``` code blocks). The file stays plain Markdown.
+  Cmd+click (Ctrl+click on Windows) opens a link. The first line is the title and is shown larger.
 - Bullets: start a line with `- `; Enter continues the list, Tab / Shift+Tab nest it, Enter on an empty bullet ends it.
 - Paste images straight from the clipboard (e.g. Snipping Tool), or drop image files in. Drag an image's corner to resize it.
 - Tags: one word each, written `#tag` (spaces become `-`). They sit at the bottom right of a note;
