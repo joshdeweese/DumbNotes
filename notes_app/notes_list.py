@@ -1,4 +1,4 @@
-"""Sidebar list of notes: one line per note, grouped under month headings."""
+"""Sidebar list of notes: one line per note (title and time), grouped under month headings."""
 
 from datetime import date, datetime
 
@@ -13,18 +13,23 @@ NOTE_ROLE = Qt.ItemDataRole.UserRole + 1
 HEADER_ROLE = Qt.ItemDataRole.UserRole + 2
 ROW_HEIGHT = 32
 HEADER_HEIGHT = 30
-GAP = 10  # space between title, tags and date
+GAP = 10  # space between title and date
 
 
 def month_label(iso: str) -> str:
     return datetime.fromisoformat(iso).strftime("%B %Y")
 
 
+def clock(when: datetime) -> str:
+    """12-hour time such as '2:05 PM' (written out by hand: Windows lacks strftime's %-I)."""
+    return f"{when.hour % 12 or 12}:{when.minute:02d} {'AM' if when.hour < 12 else 'PM'}"
+
+
 def short_ts(iso: str) -> str:
     when = datetime.fromisoformat(iso)
     if when.date() == date.today():
-        return when.strftime("Today %H:%M")
-    return f"{when.strftime('%b')} {when.day}, {when.strftime('%H:%M')}"
+        return f"Today {clock(when)}"
+    return f"{when.strftime('%b')} {when.day}, {clock(when)}"
 
 
 class NoteDelegate(QStyledItemDelegate):
@@ -72,7 +77,7 @@ class NoteDelegate(QStyledItemDelegate):
         small.setPointSizeF(option.font.pointSizeF() * 0.85)
         title_metrics, small_metrics = QFontMetrics(option.font), QFontMetrics(small)
 
-        # Date on the right, then the title, then tags in whatever room is left.
+        # Date on the right, the title in the room that's left.
         stamp = short_ts(note["modified_at"])
         stamp_width = small_metrics.horizontalAdvance(stamp)
         painter.setFont(small)
@@ -82,17 +87,7 @@ class NoteDelegate(QStyledItemDelegate):
         room = inner.width() - stamp_width - GAP
         title = note["title"] or "Untitled"
         title = title_metrics.elidedText(title, Qt.TextElideMode.ElideRight, int(room))
-        title_width = title_metrics.horizontalAdvance(title)
         painter.setFont(option.font)
         painter.setPen(QColor(TEXT if note["title"] else MUTED))
         painter.drawText(QRectF(inner.left(), inner.top(), room, inner.height()),
                          Qt.AlignmentFlag.AlignLeft | center, title)
-
-        tags_room = room - title_width - GAP
-        if note["tags"] and tags_room > 30:
-            tags = small_metrics.elidedText(note["tags"], Qt.TextElideMode.ElideRight,
-                                            int(tags_room))
-            painter.setFont(small)
-            painter.setPen(QColor(MUTED))
-            painter.drawText(QRectF(inner.left() + title_width + GAP, inner.top(), tags_room,
-                                    inner.height()), Qt.AlignmentFlag.AlignLeft | center, tags)

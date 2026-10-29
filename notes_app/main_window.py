@@ -14,7 +14,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QComboBox, QFrame, QHBoxLayout
 
 from .editor import NoteEditor
 from .file_store import NoteStore, title_from_text
-from .notes_list import HEADER_ROLE, ID_ROLE, NOTE_ROLE, NoteDelegate, month_label
+from .notes_list import HEADER_ROLE, ID_ROLE, NOTE_ROLE, NoteDelegate, clock, month_label
 from .tag_dialog import ManageTagsDialog
 from .tag_edit import TagEdit
 
@@ -30,7 +30,8 @@ def settings() -> QSettings:
 
 
 def fmt_ts(iso: str) -> str:
-    return datetime.fromisoformat(iso).strftime("%Y-%m-%d %H:%M")
+    when = datetime.fromisoformat(iso)
+    return f"{when.strftime('%b')} {when.day}, {when.year} {clock(when)}"
 
 
 def parse_tags(text: str) -> tuple[str, ...]:
@@ -128,8 +129,11 @@ class MainWindow(QMainWindow):
         self.editor.setFrameShape(QFrame.Shape.NoFrame)
         self.editor.textChanged.connect(self.schedule_save)
 
-        self.tags_edit = TagEdit(objectName="tagsEdit",
-                                 placeholderText="Add tags, separated by commas  (↓ for existing)")
+        self.tags_edit = TagEdit(objectName="tagsEdit", placeholderText="Add tags",
+                                 toolTip="Tags, separated by commas (↓ shows existing tags)")
+        self.tags_edit.setAlignment(Qt.AlignmentFlag.AlignRight)
+        self.tags_edit.setMinimumWidth(180)
+        self.tags_edit.setMaximumWidth(340)
         self.tags_edit.textChanged.connect(self.schedule_save)
 
         self.delete_btn = QPushButton("Delete", objectName="danger")
@@ -140,11 +144,7 @@ class MainWindow(QMainWindow):
 
         self.info = QLabel(objectName="info")
 
-        header = QVBoxLayout()
-        header.setContentsMargins(20, 12, 20, 0)
-        header.setSpacing(6)
-        header.addLayout(top_row)
-        header.addWidget(self.tags_edit)
+        top_row.setContentsMargins(20, 6, 20, 0)
 
         # Opens the note's own folder, where you can keep other files that go with it.
         self.attach_btn = QPushButton(objectName="attachBtn", icon=QIcon(str(FOLDER_ICON)))
@@ -160,13 +160,14 @@ class MainWindow(QMainWindow):
         footer.addWidget(self.attach_btn)
         footer.addWidget(self.info)
         footer.addStretch(1)
+        footer.addWidget(self.tags_edit, 1)
 
         pane = QWidget(objectName="editorPane")
         pane.setAttribute(Qt.WidgetAttribute.WA_StyledBackground)
         layout = QVBoxLayout(pane)
         layout.setContentsMargins(0, 0, 0, 0)
-        layout.setSpacing(8)
-        layout.addLayout(header)
+        layout.setSpacing(0)
+        layout.addLayout(top_row)
         layout.addWidget(self.editor, 1)
         layout.addLayout(footer)
         return pane

@@ -16,7 +16,7 @@ from PySide6.QtWidgets import QInputDialog, QMenu, QTextEdit
 from .file_store import IMAGE_LINK
 
 FONT_SIZE = 12
-TITLE_SIZE = 16
+TITLE_SIZE = 22
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 HANDLE = 12  # size of the drag-to-resize square on an image's bottom-right corner
 MIN_IMAGE_WIDTH = 20
@@ -95,7 +95,7 @@ class NoteEditor(QTextEdit):
     def resizeEvent(self, event):
         # Keep the text in a comfortable centred column on wide windows.
         side = max(28, (event.size().width() - TEXT_COLUMN_WIDTH) // 2)
-        self.setViewportMargins(side, 12, side, 12)
+        self.setViewportMargins(side, 0, side, 12)
         super().resizeEvent(event)
 
     # --- text -------------------------------------------------------------
