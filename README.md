@@ -24,6 +24,19 @@ pip install -r requirements.txt
 python main.py
 ```
 
+### macOS app
+
+`python main.py` shows up in the Dock as "Python". To get a proper DumbNotes app with its own
+name and icon in the Dock, Finder, Spotlight and Launchpad, run once:
+
+```
+.venv/bin/python make_mac_app.py
+```
+
+This builds `~/Applications/DumbNotes.app`, which runs `main.py` from this folder, so code changes
+show up the next time you open it. Run it again if you move the project folder or Homebrew
+upgrades Python.
+
 ## Where notes are stored
 
 Notes live in `Documents/DumbNotes`. Each note has its own folder, named by the day it was
