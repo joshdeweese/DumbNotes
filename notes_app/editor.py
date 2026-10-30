@@ -6,6 +6,7 @@ being edited is shown with its Markdown formatted (see markdown.py).
 """
 
 import re
+import sys
 import uuid
 from pathlib import Path
 
@@ -65,6 +66,8 @@ class NoteEditor(QTextEdit):
         self.setAcceptRichText(False)
         font = self.document().defaultFont()
         font.setPointSize(FONT_SIZE)
+        if sys.platform == "win32":
+            font.setFamily("Consolas")
         self.document().setDefaultFont(font)
         self.highlighter = MarkdownHighlighter(self.document())
         self.cursorPositionChanged.connect(self._update_raw_line)
