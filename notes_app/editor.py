@@ -25,6 +25,7 @@ HANDLE = 12  # size of the drag-to-resize square on an image's bottom-right corn
 MIN_IMAGE_WIDTH = 20
 TEXT_COLUMN_WIDTH = 760
 BULLET = re.compile(r"^(\s*)([-*])(\s+)(.*)$")
+WEB_ADDRESS = re.compile(r"\w+://\S+")
 TASK = re.compile(r"^\[[ xX]\](\s+)")
 INDENT = "  "
 OBJECT = "\ufffc"  # the character Qt puts in the text where an image sits
@@ -336,12 +337,6 @@ class NoteEditor(QTextEdit):
         return source.hasImage() or source.hasUrls() or super().canInsertFromMimeData(source)
 
     def insertFromMimeData(self, source):
-        if source.hasImage():
-            image = source.imageData()
-            if isinstance(image, QPixmap):
-                image = image.toImage()
-            self.insert_image(image)
-            return
         if source.hasUrls():
             paths = [Path(u.toLocalFile()) for u in source.urls() if u.isLocalFile()]
             images = [p for p in paths if p.suffix.lower() in IMAGE_SUFFIXES]
@@ -349,8 +344,19 @@ class NoteEditor(QTextEdit):
                 for path in images:
                     self.insert_image(QImage(str(path)))
                 return
+        # Office apps put a picture of the copied text on the clipboard as well as the text, so
+        # only paste the image if there's no real text (a browser's copied image may carry its
+        # address as text).
+        text = source.text()
+        if source.hasImage() and (not text.strip() or source.hasUrls()
+                                  or WEB_ADDRESS.fullmatch(text.strip())):
+            image = source.imageData()
+            if isinstance(image, QPixmap):
+                image = image.toImage()
+            self.insert_image(image)
+            return
         # Paste text without outside fonts/colours so notes stay consistent.
-        self.insertPlainText(source.text())
+        self.insertPlainText(text)
 
     def insert_image(self, image: QImage) -> None:
         if image.isNull():
