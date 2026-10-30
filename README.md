@@ -22,6 +22,7 @@ text file in a folder of its own, where you can also keep any other files that g
 - The folder button under the editor opens the note's folder in Finder / File Explorer. Its number is
   how many other files are in there (not counting the note itself or its pasted images).
 - Ctrl+N makes a new note; Delete in the list removes one.
+- **Options → Check for Updates…** gets the latest version from GitHub and restarts the app.
 
 The note title is the first line of the note.
 
@@ -46,6 +47,45 @@ name and icon in the Dock, Finder, Spotlight and Launchpad, run once:
 This builds `~/Applications/DumbNotes.app`, which runs `main.py` from this folder, so code changes
 show up the next time you open it. Run it again if you move the project folder or Homebrew
 upgrades Python.
+
+## Install on another computer
+
+Each computer runs its own copy of the code, cloned from GitHub, so it can update itself.
+You need [git](https://git-scm.com) and Python 3.10 or newer. The repository is private, so
+git asks you to sign in to GitHub the first time (Git for Windows opens a browser window for it).
+
+Windows:
+
+```
+git clone https://github.com/joshdeweese/DumbNotes.git
+cd DumbNotes
+python -m venv .venv
+.venv\Scripts\pip install -r requirements.txt
+```
+
+To start it without a console window, make a shortcut (right-click the desktop → New →
+Shortcut) to `<the DumbNotes folder>\.venv\Scripts\pythonw.exe main.py`, set its *Start in*
+to the DumbNotes folder and its icon to `notes_app\icon.ico`. Pin it to the taskbar if you like.
+
+macOS:
+
+```
+git clone https://github.com/joshdeweese/DumbNotes.git
+cd DumbNotes
+python3 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+.venv/bin/python make_mac_app.py
+```
+
+## Updating
+
+Push changes to `main` on GitHub. Then on each computer choose **Options → Check for
+Updates…**: it lists what's new and, if you say yes, pulls it, installs any new requirements
+and restarts DumbNotes. Notes aren't affected; they live in the notes folder, not with the code.
+(From a terminal, `git pull` in the DumbNotes folder does the same; restart the app afterwards.)
+
+If the update stops with "Your local changes … would be overwritten", that copy has edited
+files of its own: commit or discard them (`git status` shows which) and try again.
 
 ## Where notes are stored
 

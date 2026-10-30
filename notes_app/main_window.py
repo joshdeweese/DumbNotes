@@ -2,6 +2,7 @@
 
 import os
 import sys
+from contextlib import contextmanager
 from datetime import datetime
 from pathlib import Path
 
@@ -11,6 +12,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog, QFr
                                QHBoxLayout, QListWidget, QListWidgetItem, QMainWindow,
                                QMessageBox, QPushButton, QSplitter, QVBoxLayout, QWidget)
 
+from . import updater
 from .cheat_sheet import CheatSheet
 from .editor import NoteEditor
 from .file_store import NoteStore, parse_search, title_from_text
@@ -27,6 +29,16 @@ FOLDER_SETTING = "notes_folder"
 
 def settings() -> QSettings:
     return QSettings("DumbNotes", "DumbNotes")
+
+
+@contextmanager
+def busy():
+    """Show the wait cursor while something slow runs."""
+    QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+    try:
+        yield
+    finally:
+        QApplication.restoreOverrideCursor()
 
 
 def fmt_ts(iso: str) -> str:
@@ -71,6 +83,8 @@ class MainWindow(QMainWindow):
                                    shortcut="Ctrl+Shift+D")
         self.dark_action.toggled.connect(self.set_dark_mode)
         options.addAction(self.dark_action)
+        options.addSeparator()
+        options.addAction("Check for Updates…", self.check_for_updates)
         self._apply_icons()
 
         self.refresh_known_tags()
@@ -440,6 +454,41 @@ class MainWindow(QMainWindow):
     def _apply_icons(self) -> None:
         self.markdown_btn.setIcon(themed_icon("markdown.svg", (26, 16)))
         self.attach_btn.setIcon(themed_icon("folder.svg", (16, 16)))
+
+    # --- updates ----------------------------------------------------------
+
+    def check_for_updates(self) -> None:
+        """Options > Check for Updates: get the latest version from GitHub and restart."""
+        title = "Check for Updates"
+        if not updater.available():
+            QMessageBox.information(self, title, "Updating needs git and a copy of DumbNotes "
+                                    "cloned from GitHub (see README.md).")
+            return
+        try:
+            with busy():
+                new = updater.check()
+        except updater.UpdateError as e:
+            QMessageBox.warning(self, title, f"Couldn't check for updates:\n\n{e}")
+            return
+        if not new:
+            QMessageBox.information(self, title, "You have the latest version of DumbNotes.")
+            return
+        listing = "\n".join(f"•  {summary}" for summary in new[:10])
+        if len(new) > 10:
+            listing += f"\n…and {len(new) - 10} more"
+        count = "1 update" if len(new) == 1 else f"{len(new)} updates"
+        answer = QMessageBox.question(self, title, f"{count} available:\n\n{listing}\n\n"
+                                      "Update and restart DumbNotes now?")
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            with busy():
+                updater.update()
+        except updater.UpdateError as e:
+            QMessageBox.warning(self, title, f"Couldn't update:\n\n{e}")
+            return
+        self.close()  # saves the open note
+        updater.restart()
 
     def closeEvent(self, event) -> None:
         self.save_current()
