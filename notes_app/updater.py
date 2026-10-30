@@ -60,7 +60,9 @@ def check() -> list[str]:
     try:
         _git("rev-parse", "--abbrev-ref", "@{upstream}")
     except UpdateError:
-        raise UpdateError("This copy isn't following a branch on GitHub.") from None
+        branch = _git("branch", "--show-current").strip() or "no branch"
+        raise UpdateError(f"This copy is on the branch \"{branch}\", which isn't on GitHub. "
+                          "Switch to main (git checkout main) to get updates.") from None
     return _git("log", "--format=%s", "HEAD..@{upstream}").splitlines()
 
 
