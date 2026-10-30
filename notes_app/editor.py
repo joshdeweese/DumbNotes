@@ -67,7 +67,7 @@ class NoteEditor(QTextEdit):
         font = self.document().defaultFont()
         font.setPointSize(FONT_SIZE)
         if sys.platform == "win32":
-            font.setFamily("Consolas")
+            font.setFamily("Calibri")
         self.document().setDefaultFont(font)
         self.highlighter = MarkdownHighlighter(self.document())
         self.cursorPositionChanged.connect(self._update_raw_line)
