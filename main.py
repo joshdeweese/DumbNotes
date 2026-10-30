@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QStandardPaths
 from PySide6.QtGui import QIcon
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QFileDialog, QMessageBox
 
 from notes_app.file_store import NoteStore
 from notes_app.main_window import FOLDER_SETTING, THEME_SETTING, MainWindow, settings
@@ -31,6 +31,24 @@ def old_data_dir() -> Path:
         return Path(override)
     app_data = QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppDataLocation)
     return Path(app_data).parent / "NotesApp"  # the app's name before it became DumbNotes
+
+
+def open_store() -> NoteStore | None:
+    """Open the notes folder. If it can't be created or read (e.g. Documents is a broken link),
+    say so and ask for another folder, which is remembered; None if the user gives up."""
+    folder = notes_dir()
+    while True:
+        try:
+            return NoteStore(folder)
+        except OSError as e:
+            QMessageBox.warning(None, "Notes folder", "DumbNotes can't keep its notes in\n"
+                                f"{folder}\n\n({e})\n\nChoose another folder for your notes.")
+            chosen = QFileDialog.getExistingDirectory(None, "Choose where to save notes",
+                                                      str(Path.home()))
+            if not chosen:
+                return None
+            folder = Path(chosen)
+            settings().setValue(FOLDER_SETTING, chosen)
 
 
 ICON = Path(__file__).parent / "notes_app" / "icon.svg"
@@ -87,7 +105,9 @@ def main() -> int:
     # the system setting.
     app.setStyle("Fusion")
     apply_theme(app, "dark" if settings().value(THEME_SETTING) == "dark" else "light")
-    store = NoteStore(notes_dir())
+    store = open_store()
+    if store is None:
+        return 1
     old = old_data_dir()
     if (old / "notes.db").is_file():
         migrate_database(old / "notes.db", old / "images", store)
