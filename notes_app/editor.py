@@ -19,7 +19,7 @@ from .file_store import IMAGE_LINK
 from .markdown import CODE_LINE, LineKind, MarkdownHighlighter, link_at
 from .style import C
 
-FONT_SIZE = 12
+FONT_SIZE = 10 if sys.platform == "win32" else 12
 BULLET_GLYPHS = "•◦▪"  # by nesting level
 IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".gif", ".bmp", ".webp"}
 HANDLE = 12  # size of the drag-to-resize square on an image's bottom-right corner
